@@ -1,0 +1,13 @@
+Image OTB R4 Sud basee sur OpenWrt officiel 25.12.5.
+
+Securites voulues :
+- aucune archive de configuration, aucun mot de passe, aucune cle privee ni certificat embarque ;
+- conservation du reseau existant uniquement par la sauvegarde sysupgrade faite au moment de la migration ;
+- dockerd compile mais desactive par defaut ;
+- dockerd refuse de demarrer tant que /srv n'est pas un montage reel et que
+  /srv/.r4sud-ha-storage-ready n'existe pas ;
+- aucune creation automatique de bridge ou de zone firewall Docker ;
+- gestion iptables Docker desactivee par defaut.
+
+La commande r4sud-container-storage-enable --confirm ne doit etre lancee
+qu'apres installation, formatage explicite et montage stable du NVMe en ext4.

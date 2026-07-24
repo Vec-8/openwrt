@@ -1,0 +1,7 @@
+#!/bin/sh
+uci -q batch <<'UCI'
+set attendedsysupgrade.owut=owut
+set attendedsysupgrade.owut.pre_install='/etc/owut.d/otb-pre-install.sh'
+commit attendedsysupgrade
+UCI
+exit 0

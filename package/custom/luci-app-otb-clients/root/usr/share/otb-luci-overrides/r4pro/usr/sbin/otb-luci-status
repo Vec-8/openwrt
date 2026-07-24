@@ -1,0 +1,45 @@
+#!/bin/sh
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+wan_json() {
+  name="$1"; label="$2"
+  st="$(ubus call mwan3 status '{"section":"interfaces"}' 2>/dev/null | jsonfilter -e "@.interfaces.$name.status" 2>/dev/null)"
+  [ -n "$st" ] || st="unknown"
+  ns="$(ubus call network.interface.$name status 2>/dev/null)"
+  up="$(printf '%s' "$ns" | jsonfilter -e '@.up' 2>/dev/null)"
+  ip="$(printf '%s' "$ns" | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)"
+  dev="$(printf '%s' "$ns" | jsonfilter -e '@.l3_device' 2>/dev/null)"
+  uptime="$(printf '%s' "$ns" | jsonfilter -e '@.uptime' 2>/dev/null)"
+  if [ -z "$ip" ] && [ -n "$dev" ] && [ "$dev" != "-" ]; then
+    ip="$(ip -4 -o addr show dev "$dev" 2>/dev/null | awk 'NR==1 { split($4,a,"/"); print a[1] }')"
+  fi
+  [ -n "$ip" ] || ip="-"; [ -n "$dev" ] || dev="-"; [ -n "$uptime" ] || uptime="0"; [ -n "$up" ] || up="false"
+  printf '{"name":"%s","label":"%s","status":"%s","up":%s,"ip":"%s","device":"%s","uptime":%s}' \
+    "$(json_escape "$name")" "$(json_escape "$label")" "$(json_escape "$st")" "$up" "$(json_escape "$ip")" "$(json_escape "$dev")" "$uptime"
+}
+dev_json() {
+  section="$1"
+  name="$(uci -q get otb_devices.$section.name)"
+  role="$(uci -q get otb_devices.$section.role)"
+  ip="$(uci -q get otb_devices.$section.ip)"
+  [ -n "$name" ] || name="$ip"
+  [ -n "$role" ] || role="Équipement"
+  if ping -c1 -W1 "$ip" >/dev/null 2>&1; then state="online"; ok=true; else state="offline"; ok=false; fi
+  printf '{"name":"%s","role":"%s","ip":"%s","status":"%s","online":%s,"url":"http://%s/","http_url":"http://%s/","https_url":"https://%s/"}' \
+    "$(json_escape "$name")" "$(json_escape "$role")" "$(json_escape "$ip")" "$state" "$ok" "$(json_escape "$ip")" "$(json_escape "$ip")" "$(json_escape "$ip")"
+}
+printf '{"wans":['
+wan_json wan_fibre Fibre
+printf ','
+wan_json wan5g_free '5G Free'
+printf ','
+wan_json wan5g_BYG '5G Bouygues'
+printf '],"devices":['
+first=1
+for s in $(uci -q show otb_devices | sed -n 's/^otb_devices\.\([^.=]*\)=device.*/\1/p'); do
+  ip="$(uci -q get otb_devices.$s.ip)"
+  [ -n "$ip" ] || continue
+  [ "$first" = 1 ] || printf ','
+  dev_json "$s"
+  first=0
+done
+printf ']}'

@@ -1,0 +1,6 @@
+#!/bin/sh
+printf 'Content-Type: text/plain\r\n\r\n'
+iface="$(printf '%s' "$QUERY_STRING" | sed -n 's/^.*iface=\([^&]*\).*$/\1/p' | sed 's/%5F/_/g;s/%5f/_/g')"
+case "$iface" in wan_fibre|wan5g_free|wan5g_BYG) ;; *) echo "refus"; exit 0;; esac
+/usr/sbin/otb-luci-wan-restart "$iface" 2>&1
+/usr/sbin/otb-refresh-luci-json >/dev/null 2>&1 || true

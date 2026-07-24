@@ -1,0 +1,165 @@
+#!/bin/sh
+set -u
+
+TAG="otb-wifi-cahier-guard"
+LOCK="/var/run/${TAG}.lock"
+INITIAL_DELAY="${OTB_WIFI_GUARD_DELAY:-90}"
+CAC_DELAY="${OTB_WIFI_CAC_DELAY:-75}"
+SHORT_DELAY="${OTB_WIFI_SHORT_DELAY:-15}"
+
+log() {
+	logger -t "$TAG" "$*"
+}
+
+mkdir "$LOCK" 2>/dev/null || exit 0
+trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+
+# Une installation sans profils OTB ou avec le Wi-Fi volontairement désactivé
+# ne doit jamais être modifiée par le garde.
+[ "$(uci -q get wireless.cahier_main_mlo.disabled || true)" = "0" ] || exit 0
+[ "$(uci -q get wireless.radio0.disabled || true)" = "0" ] || exit 0
+[ "$(uci -q get wireless.radio1.disabled || true)" = "0" ] || exit 0
+[ "$(uci -q get wireless.radio2.disabled || true)" = "0" ] || exit 0
+
+SNAPSHOT=""
+
+refresh_snapshot() {
+	SNAPSHOT="$(iw dev 2>/dev/null || true)"
+}
+
+interface_has_ssid() {
+	target_interface="$1"
+	target_ssid="$2"
+	printf '%s\n' "$SNAPSHOT" | awk \
+		-v target_interface="$target_interface" \
+		-v target_ssid="$target_ssid" '
+		$1 == "Interface" {
+			in_interface = ($2 == target_interface)
+			next
+		}
+		in_interface && $1 == "ssid" && $2 == target_ssid {
+			found = 1
+		}
+		END {
+			exit(found ? 0 : 1)
+		}
+	'
+}
+
+link_has_width() {
+	target_interface="$1"
+	target_link="$2"
+	target_width="$3"
+	printf '%s\n' "$SNAPSHOT" | awk \
+		-v target_interface="$target_interface" \
+		-v target_link="$target_link" \
+		-v target_width="$target_width" '
+		$1 == "Interface" {
+			in_interface = ($2 == target_interface)
+			in_link = 0
+			next
+		}
+		in_interface && $1 == "-" && $2 == "link" && $3 == "ID" {
+			in_link = ($4 == target_link)
+			next
+		}
+		in_interface && in_link && $1 == "channel" {
+			if (index($0, "width: " target_width " MHz"))
+				found = 1
+			in_link = 0
+		}
+		END {
+			exit(found ? 0 : 1)
+		}
+	'
+}
+
+ssid_has_width() {
+	target_ssid="$1"
+	target_width="$2"
+	printf '%s\n' "$SNAPSHOT" | awk \
+		-v target_ssid="$target_ssid" \
+		-v target_width="$target_width" '
+		$1 == "Interface" {
+			in_interface = 1
+			right_ssid = 0
+			next
+		}
+		in_interface && $1 == "ssid" {
+			right_ssid = ($2 == target_ssid)
+			next
+		}
+		in_interface && right_ssid && $1 == "channel" {
+			if (index($0, "width: " target_width " MHz"))
+				found = 1
+			right_ssid = 0
+		}
+		END {
+			exit(found ? 0 : 1)
+		}
+	'
+}
+
+wifi_is_conformant() {
+	refresh_snapshot
+
+	interface_has_ssid ap-mld0 Ti-Kanevedenn &&
+	interface_has_ssid ap-mld1 Trefflay &&
+	interface_has_ssid ap-mld2 Home-5G &&
+	link_has_width ap-mld0 0 40 &&
+	link_has_width ap-mld0 1 160 &&
+	link_has_width ap-mld0 2 320 &&
+	link_has_width ap-mld1 0 40 &&
+	link_has_width ap-mld1 1 160 &&
+	link_has_width ap-mld1 2 320 &&
+	link_has_width ap-mld2 0 40 &&
+	link_has_width ap-mld2 1 160 &&
+	ssid_has_width Home-2G 40
+}
+
+restart_radio() {
+	radio="$1"
+	wait_after="$2"
+	log "liens incomplets: relance controlee de ${radio}"
+	wifi down "$radio" >/dev/null 2>&1 || true
+	sleep 3
+	wifi up "$radio" >/dev/null 2>&1 || true
+	sleep "$wait_after"
+}
+
+sleep "$INITIAL_DELAY"
+
+if wifi_is_conformant; then
+	log "Wi-Fi conforme sans correction: 40/160/320 MHz et liens MLO complets"
+	exit 0
+fi
+
+# Sur MT7996, le démarrage simultané des trois radios peut laisser le CAC
+# 5 GHz en erreur -EBUSY. Une relance du seul radio1, une fois les autres
+# radios stables, permet au CAC réglementaire d'aboutir.
+restart_radio radio1 "$CAC_DELAY"
+if wifi_is_conformant; then
+	log "Wi-Fi conforme apres reprise du 5 GHz"
+	exit 0
+fi
+
+# Une reprise de radio0 ou radio1 peut détacher les liens 6 GHz d'un MLD sans
+# arrêter le PHY 6 GHz. La relance suivante ne touche pas au 5 GHz déjà validé.
+restart_radio radio2 "$SHORT_DELAY"
+if wifi_is_conformant; then
+	log "Wi-Fi conforme apres reprise du 5 et du 6 GHz"
+	exit 0
+fi
+
+# Dernier essai borné. Il n'est exécuté que si le 2,4 GHz ou plusieurs liens
+# restent absents malgré les deux reprises ciblées.
+restart_radio radio0 "$SHORT_DELAY"
+restart_radio radio1 "$CAC_DELAY"
+restart_radio radio2 "$SHORT_DELAY"
+if wifi_is_conformant; then
+	log "Wi-Fi conforme apres reprise sequentielle finale"
+	exit 0
+fi
+
+log "ERREUR: Wi-Fi toujours non conforme apres les reprises bornees"
+exit 1

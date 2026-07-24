@@ -1,0 +1,5 @@
+#!/bin/sh
+# Au premier démarrage d'une nouvelle image, migrer uniquement une
+# configuration OTB existante. Une image vierge sans secrets reste inchangée.
+/usr/sbin/otb-wifi-cahier-migrate --apply --no-reload >/tmp/otb-wifi-cahier.log 2>&1 || true
+exit 0

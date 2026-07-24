@@ -1,0 +1,16 @@
+#!/bin/sh
+# Ne jamais ecrire les donnees de conteneurs sur l'eMMC par defaut.
+# Reinstaller d'abord le garde specifique au Sud, y compris apres sysupgrade.
+/etc/init.d/r4sud-ha-guard apply >/dev/null 2>&1 || exit 1
+uci -q batch <<'UCI'
+set dockerd.globals=globals
+set dockerd.globals.data_root='/srv/docker'
+set dockerd.globals.log_driver='local'
+set dockerd.globals.log_level='warn'
+set dockerd.globals.iptables='0'
+set dockerd.globals.ip6tables='0'
+UCI
+uci -q commit dockerd
+/etc/init.d/dockerd stop >/dev/null 2>&1 || true
+/etc/init.d/dockerd disable >/dev/null 2>&1 || true
+exit 0

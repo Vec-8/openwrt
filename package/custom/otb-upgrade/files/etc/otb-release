@@ -1,0 +1,20 @@
+# Métadonnées immuables de cette image. BOARD_NAME est déjà déterminé par
+# /usr/sbin/otb-upgrade avant le chargement de ce fichier.
+case "${BOARD_NAME:-}" in
+	bananapi,bpi-r4-pro-8x)
+		OTB_DEVICE='r4pro'
+		OTB_BUILD_ID='r4pro-openwrt-25.12.5-rss-mtk25-v15-pure-rss-wifi-cahier-20260724'
+		OTB_SEQUENCE='2026072416'
+		;;
+	bananapi,bpi-r4)
+		OTB_DEVICE='r4sud'
+		OTB_BUILD_ID='r4sud-openwrt-25.12.5-rss-mtk25-v15-pure-rss-ha-wifi-cahier-20260724'
+		OTB_SEQUENCE='2026072415'
+		;;
+	*)
+		OTB_DEVICE='unsupported'
+		OTB_BUILD_ID='unsupported'
+		OTB_SEQUENCE='0'
+		;;
+esac
+OTB_CHANNEL='test'

@@ -1,0 +1,13 @@
+{
+  "luci-mod-status-index-otb": {
+    "description": "Lecture de la supervision OTB dans l'Overview LuCI",
+    "read": {
+      "file": {
+        "/usr/sbin/otb-luci-status": [ "exec" ]
+      },
+      "ubus": {
+        "file": [ "exec" ]
+      }
+    }
+  }
+}

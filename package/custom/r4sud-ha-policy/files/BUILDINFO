@@ -1,0 +1,12 @@
+BUILD_ID=r4sud-openwrt-25.12.5-rss-mtk25-v15-pure-rss-ha-wifi-cahier-20260724
+BUILD_SEQUENCE=2026072415
+OPENWRT_VERSION=25.12.5
+KERNEL_VERSION=6.12.94
+TARGET=mediatek/filogic
+DEVICE=bananapi_bpi-r4
+ROLE=R4_SUD_AP_SWITCH_HOME_ASSISTANT_READY
+RSS_BACKPORT=mediatek-25.12-pure-rss-openwrt-25.12.5-no-hwlro-no-rxbuf-no-nondsa-speed
+DOCKER_POLICY=disabled-until-separate-ext4-srv-confirmed
+NETWORK_POLICY=no-automatic-network-or-firewall-changes
+CONTAINER_DATA_ROOT=/srv/docker
+HOME_ASSISTANT_ROOT=/srv/homeassistant

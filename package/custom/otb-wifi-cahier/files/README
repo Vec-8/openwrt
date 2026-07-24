@@ -1,0 +1,27 @@
+OTB Wi-Fi cahier des charges V1
+
+Profils appliqués sans imprimer ni remplacer les secrets existants :
+
+* Ti-Kanevedenn : réseau/VLAN existant, MLO 2.4 + 5 + 6 GHz,
+  WPA3-SAE, PMF obligatoire, 40 + 160 + 320 MHz.
+* Trefflay : réseau/VLAN existant, MLO 2.4 + 5 + 6 GHz,
+  WPA3-SAE, PMF obligatoire, 40 + 160 + 320 MHz.
+* Home-2G : réseau/VLAN existant, 2.4 GHz, sans MLO,
+  WPA2-PSK, PMF désactivé, 40 MHz.
+* Home-5G : réseau/VLAN existant, MLO 2.4 + 5 GHz,
+  WPA2-PSK, PMF désactivé, 40 + 160 MHz.
+
+Le script ne change ni les canaux, ni le pays, ni la puissance demandée.
+Il sauvegarde /etc/config/wireless sous /root/otb-backups avant écriture.
+La coexistence 20/40 MHz est désactivée sur la radio 2,4 GHz afin de maintenir
+les 40 MHz exigés même lorsque l'autre point d'accès OTB utilise le même canal.
+
+Après le démarrage, otb-wifi-cahier-guard attend la fin normale du CAC DFS et
+contrôle les largeurs et les liens réellement actifs avec iw. Il ne relance
+aucune radio si le cahier est déjà respecté. Si le démarrage simultané des
+radios MT7996 laisse des liens MLO incomplets, il réessaie d'abord le 5 GHz,
+puis le 6 GHz seulement si nécessaire.
+
+Exécution manuelle avec rechargement des radios :
+
+    otb-wifi-cahier-migrate --apply --reload

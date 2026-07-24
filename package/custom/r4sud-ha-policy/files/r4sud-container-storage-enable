@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+if [ "${1:-}" != "--confirm" ]; then
+	echo "Usage: r4sud-container-storage-enable --confirm" >&2
+	echo "Prerequis: NVMe formate explicitement en ext4 et monte sur /srv par UUID." >&2
+	exit 2
+fi
+
+entry="$(awk '$2 == "/srv" { print $1 " " $3; exit }' /proc/mounts)"
+[ -n "$entry" ] || { echo "Refus: /srv n'est pas un montage distinct." >&2; exit 1; }
+fs="${entry#* }"
+[ "$fs" = "ext4" ] || { echo "Refus: /srv doit etre en ext4 (actuel: $fs)." >&2; exit 1; }
+
+mkdir -p /srv/docker
+mkdir -p /srv/homeassistant/homeassistant/config
+mkdir -p /srv/homeassistant/mosquitto/config
+mkdir -p /srv/homeassistant/mosquitto/data
+mkdir -p /srv/homeassistant/mosquitto/log
+mkdir -p /srv/homeassistant/zigbee2mqtt/data
+mkdir -p /srv/homeassistant/backups
+mkdir -p /srv/homeassistant/scripts
+chmod 0700 /srv/docker /srv/homeassistant /srv/homeassistant/backups
+: > /srv/.r4sud-ha-storage-ready
+sync
+
+/etc/init.d/r4sud-ha-guard apply >/dev/null 2>&1
+uci -q set dockerd.globals.data_root='/srv/docker'
+uci -q set dockerd.globals.iptables='0'
+uci -q set dockerd.globals.ip6tables='0'
+uci -q commit dockerd
+/etc/init.d/dockerd enable
+/etc/init.d/dockerd start
+
+echo "Stockage conteneurs active. Docker reste en iptables=0; aucune regle firewall n'a ete ajoutee."

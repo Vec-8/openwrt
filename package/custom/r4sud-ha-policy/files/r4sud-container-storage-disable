@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+/etc/init.d/dockerd stop >/dev/null 2>&1 || true
+/etc/init.d/dockerd disable >/dev/null 2>&1 || true
+rm -f /srv/.r4sud-ha-storage-ready
+sync
+echo "Conteneurs desactives. Les donnees sous /srv n'ont pas ete supprimees."

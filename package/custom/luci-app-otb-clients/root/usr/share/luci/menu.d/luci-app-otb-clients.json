@@ -1,0 +1,24 @@
+{
+	"admin/status/otb-clients": {
+		"title": "Clients OTB",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "otb-clients/status"
+		},
+		"depends": {
+			"acl": [ "luci-app-otb-clients" ]
+		}
+	},
+	"admin/status/otb-lacp": {
+		"title": "LACP 2x10",
+		"order": 26,
+		"action": {
+			"type": "view",
+			"path": "otb-clients/lacp"
+		},
+		"depends": {
+			"acl": [ "luci-app-otb-clients" ]
+		}
+	}
+}
