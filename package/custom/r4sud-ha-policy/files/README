@@ -1,4 +1,4 @@
-Image OTB R4 Sud basee sur OpenWrt officiel 25.12.5.
+Image OTB R4 Sud basee sur OpenWrt main officiel et Linux 6.18.39.
 
 Securites voulues :
 - aucune archive de configuration, aucun mot de passe, aucune cle privee ni certificat embarque ;

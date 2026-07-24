@@ -1,0 +1,61 @@
+#!/bin/sh
+set -u
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+board="$(board_name 2>/dev/null || echo inconnu)"
+errors=0
+enabled=0
+mlo_enabled=0
+
+echo "BOARD=${board}"
+echo "POLICY=no-automatic-change"
+echo "REQUIREMENT=one-independent-wifi-iface-per-radio"
+
+audit_iface() {
+	local section="$1" disabled mlo device devices ssid network
+	config_get disabled "$section" disabled 0
+	[ "$disabled" = "1" ] && return 0
+	config_get mlo "$section" mlo 0
+	config_get device "$section" device ""
+	config_get ssid "$section" ssid ""
+	config_get network "$section" network ""
+	devices="$device"
+	config_list_foreach "$section" device append_device
+	enabled=$((enabled + 1))
+	[ "$mlo" = "1" ] && mlo_enabled=$((mlo_enabled + 1))
+	case "$devices" in
+		*" "*) errors=$((errors + 1)); state="ERREUR_MULTI_RADIO" ;;
+		"") errors=$((errors + 1)); state="ERREUR_SANS_RADIO" ;;
+		*) state="OK" ;;
+	esac
+	[ "$mlo" = "1" ] && {
+		errors=$((errors + 1))
+		state="ERREUR_MLO"
+	}
+	printf 'IFACE=%s DEVICE=%s SSID=%s NETWORK=%s MLO=%s STATE=%s\n' \
+		"$section" "$devices" "$ssid" "$network" "$mlo" "$state"
+}
+
+append_device() {
+	local item="$1"
+	case " $devices " in
+		*" $item "*) ;;
+		*) devices="${devices:+$devices }$item" ;;
+	esac
+}
+
+config_load wireless
+config_foreach audit_iface wifi-iface
+
+echo "ENABLED_IFACES=${enabled}"
+echo "MLO_ENABLED=${mlo_enabled}"
+echo "ERRORS=${errors}"
+
+if [ "$board" = "bananapi,bpi-r4-pro-8x" ] && [ "$errors" -ne 0 ]; then
+	echo "RESULT=NON_CONFORME"
+	exit 1
+fi
+echo "RESULT=CONFORME"
+exit 0

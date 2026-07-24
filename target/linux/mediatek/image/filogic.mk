@@ -737,8 +737,40 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS := mt7988a-bananapi-bpi-r4
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4
   $(call Device/bananapi_bpi-r4-common)
+  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier
 endef
 TARGET_DEVICES += bananapi_bpi-r4
+
+define Device/bananapi_bpi-r4-pro-8x
+  DEVICE_VENDOR := Bananapi
+  DEVICE_MODEL := BPI-R4 Pro 8X
+  DEVICE_DTS := mt7988a-bananapi-bpi-r4-pro-8x
+  DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-pro-8x
+  DEVICE_DTS_DIR := $(DTS_DIR)/
+  DEVICE_DTS_LOADADDR := 0x45f00000
+  DEVICE_DTS_OVERLAY := mt7988a-bananapi-bpi-r4-pro-8x-emmc \
+	mt7988a-bananapi-bpi-r4-pro-8x-rtc \
+	mt7988a-bananapi-bpi-r4-pro-8x-sd
+  DEVICE_DTC_FLAGS := --pad 4096
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-i2c-mux-pca954x \
+	kmod-gpio-pca953x kmod-eeprom-at24 kmod-mt7996-firmware \
+	kmod-mt7996-233-firmware kmod-rtc-pcf8563 kmod-sfp \
+	kmod-dsa-mxl862xx kmod-phy-aeonsemi-as21xxx kmod-usb3 \
+	e2fsprogs f2fsck mkf2fs mt7988-wo-firmware \
+	r4pro-bonding-early bridger otb-wifi-cahier
+  SUPPORTED_DEVICES += bananapi,bpi-r4-pro-8x
+  IMAGES := sysupgrade.itb
+  KERNEL_LOADADDR := 0x46000000
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  IMAGE_SIZE := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE))m
+  KERNEL := kernel-bin | gzip
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.itb := append-kernel | \
+	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-with-rootfs | \
+	pad-rootfs | append-metadata
+endef
+TARGET_DEVICES += bananapi_bpi-r4-pro-8x
 
 define Device/bananapi_bpi-r4-poe
   DEVICE_MODEL := BPi-R4 2.5GE
