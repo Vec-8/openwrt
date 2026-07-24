@@ -738,6 +738,14 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4
   $(call Device/bananapi_bpi-r4-common)
   DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier
+  # The HA/container profile makes the per-device initramfs larger than the
+  # fixed 44 MiB recovery slot in the combined SD-card installer layout.
+  # Keep the sysupgrade and individual bootloader artifacts used in service,
+  # but do not generate the two unrelated combined SD-card installer images.
+  ARTIFACTS := \
+	emmc-gpt.bin emmc-preloader.bin emmc-bl31-uboot.fip \
+	emmc-preloader-8g.bin snand-preloader-8g.bin \
+	snand-preloader.bin snand-bl31-uboot.fip
 endef
 TARGET_DEVICES += bananapi_bpi-r4
 
