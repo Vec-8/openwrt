@@ -1,6 +1,4 @@
 #!/bin/sh
-set -u
-
 . /lib/functions.sh
 . /lib/functions/system.sh
 
