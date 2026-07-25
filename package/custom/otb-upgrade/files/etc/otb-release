@@ -2,13 +2,13 @@
 case "${BOARD_NAME:-}" in
 	bananapi,bpi-r4-pro-8x)
 		OTB_DEVICE='r4pro'
-		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-rss-v1-nomlo-20260724'
-		OTB_SEQUENCE='2026072421'
+		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-rss-v2-mt7990-nomlo-20260725'
+		OTB_SEQUENCE='2026072521'
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-v1-ha-20260724'
-		OTB_SEQUENCE='2026072420'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-v2-mt7990-ha-20260725'
+		OTB_SEQUENCE='2026072520'
 		;;
 	*)
 		OTB_DEVICE='unsupported'
