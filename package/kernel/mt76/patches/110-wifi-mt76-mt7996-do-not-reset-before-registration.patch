@@ -1,0 +1,25 @@
+From: OTB V5 <otb@localhost>
+Subject: [PATCH] wifi: mt76: mt7996: do not reset before registration
+
+An MCU timeout during the initial firmware load can happen before
+mt76_register_device() has completed.  Scheduling reset_work from that path
+can call ieee80211_restart_hw() while probe is unwinding and the hardware is
+not registered, racing device teardown and causing a NULL dereference in
+ieee80211_restart_work.
+
+Only request the runtime reset once hardware initialisation has completed.
+Probe-time timeouts still return -ETIMEDOUT and unwind normally; runtime MCU
+timeouts retain the existing recovery behaviour.
+
+--- a/mt7996/mcu.c
++++ b/mt7996/mcu.c
+@@ -229,7 +229,8 @@ mt7996_mcu_parse_response(struct mt76_dev
+ 		dev_err(mdev->dev, "Message %08x (seq %d) timeout\n",
+ 			cmd, seq);
+ 
+-		if (!test_and_set_bit(MT76_MCU_RESET, &dev->mphy.state)) {
++		if (dev->recovery.hw_init_done &&
++		    !test_and_set_bit(MT76_MCU_RESET, &dev->mphy.state)) {
+ 			dev->recovery.restart = true;
+ 			wake_up(&dev->mt76.mcu.wait);
+ 			queue_work(dev->mt76.wq, &dev->reset_work);
