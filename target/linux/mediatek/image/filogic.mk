@@ -740,7 +740,10 @@ define Device/bananapi_bpi-r4
   DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-mt7988-rss-tuning \
 	-openvpn-openssl -openvpn-easy-rsa -luci-proto-openvpn \
 	-mwan3 -luci-app-mwan3 -pbr -luci-app-pbr \
-	-sqm-scripts -luci-app-sqm -miniupnpd-nftables -luci-app-upnp
+	-sqm-scripts -luci-app-sqm -miniupnpd-nftables -luci-app-upnp \
+	-modemmanager -luci-proto-modemmanager -uqmi -umbim -qmi-utils -wwan \
+	-luci-proto-qmi -luci-proto-mbim -libqmi -libmbim \
+	-kmod-usb-net-qmi-wwan -kmod-usb-net-cdc-mbim -kmod-usb-net-cdc-ncm
   # The HA/container profile makes the per-device initramfs larger than the
   # fixed 44 MiB recovery slot in the combined SD-card installer layout.
   # Keep the sysupgrade and individual bootloader artifacts used in service,
