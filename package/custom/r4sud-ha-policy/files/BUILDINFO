@@ -1,5 +1,5 @@
-BUILD_ID=r4sud-openwrt-main-6.18.39-rss-safe-v8-napi256-ha-aponly-20260726
-BUILD_SEQUENCE=2026072606
+BUILD_ID=r4sud-openwrt-main-6.18.39-rss-safe-v8a-stock-mt76-ha-aponly-20260726
+BUILD_SEQUENCE=2026072607
 OPENWRT_VERSION=SNAPSHOT
 OPENWRT_COMMIT=672400f3619e912e8d2834f225f48a025a4e4ca2
 KERNEL_VERSION=6.18.39
@@ -10,3 +10,4 @@ RSS_PORT=frank-w-native-rss-only-hwlro-disabled-after-live-validation
 WIFI_POLICY=preserve-existing-mlo-no-automatic-change
 ROUTING_EXTRAS=absent-openvpn-mwan3-pbr-sqm-upnp-modemmanager-qmi-mbim
 WIREGUARD_POLICY=preserved-existing-config-no-automatic-change
+WIFI_DRIVER=official-mt76-50480826-no-local-shutdown-or-recovery-hooks
