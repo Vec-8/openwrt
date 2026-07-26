@@ -7,8 +7,8 @@ case "${BOARD_NAME:-}" in
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-v3-napi256-mt7990-ha-20260726'
-		OTB_SEQUENCE='2026072601'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-v4-napi256-ha-aponly-20260726'
+		OTB_SEQUENCE='2026072602'
 		;;
 	*)
 		OTB_DEVICE='unsupported'

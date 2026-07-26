@@ -1,5 +1,5 @@
-BUILD_ID=r4sud-openwrt-main-6.18.39-rss-v3-napi256-mt7990-ha-20260726
-BUILD_SEQUENCE=2026072601
+BUILD_ID=r4sud-openwrt-main-6.18.39-rss-v4-napi256-ha-aponly-20260726
+BUILD_SEQUENCE=2026072602
 OPENWRT_VERSION=SNAPSHOT
 OPENWRT_COMMIT=672400f3619e912e8d2834f225f48a025a4e4ca2
 KERNEL_VERSION=6.18.39
@@ -7,4 +7,6 @@ BASE=official-openwrt-main
 CONTAINER_POLICY=installed-disabled-until-dedicated-ext4-mounted-on-srv
 NETWORK_POLICY=no-network-vlan-bridge-firewall-change
 RSS_PORT=frank-w-native-rss-rebased-after-openwrt-6.18-patches
-WIFI_POLICY=passive-no-automatic-change
+WIFI_POLICY=preserve-existing-mlo-no-automatic-change
+ROUTING_EXTRAS=absent-openvpn-mwan3-pbr-sqm-upnp
+WIREGUARD_POLICY=preserved-existing-config-no-automatic-change

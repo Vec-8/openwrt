@@ -737,7 +737,10 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS := mt7988a-bananapi-bpi-r4
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4
   $(call Device/bananapi_bpi-r4-common)
-  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-mt7988-rss-tuning
+  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-mt7988-rss-tuning \
+	-openvpn-openssl -openvpn-easy-rsa -luci-proto-openvpn \
+	-mwan3 -luci-app-mwan3 -pbr -luci-app-pbr \
+	-sqm-scripts -luci-app-sqm -miniupnpd-nftables -luci-app-upnp
   # The HA/container profile makes the per-device initramfs larger than the
   # fixed 44 MiB recovery slot in the combined SD-card installer layout.
   # Keep the sysupgrade and individual bootloader artifacts used in service,

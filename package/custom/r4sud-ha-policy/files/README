@@ -11,3 +11,6 @@ Securites voulues :
 
 La commande r4sud-container-storage-enable --confirm ne doit etre lancee
 qu'apres installation, formatage explicite et montage stable du NVMe en ext4.
+
+Profil point d acces / switch : OpenVPN, MWAN3, PBR, SQM et UPnP ne sont pas embarques.
+Les configurations reseau, VLAN, bridge, bond, firewall et WireGuard existantes ne sont jamais modifiees automatiquement.
