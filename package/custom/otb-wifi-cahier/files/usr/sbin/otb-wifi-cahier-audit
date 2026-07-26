@@ -4,36 +4,15 @@
 
 board="$(board_name 2>/dev/null || echo inconnu)"
 errors=0
-enabled=0
-mlo_enabled=0
+checks=0
+devices=""
 
-echo "BOARD=${board}"
-echo "POLICY=no-automatic-change"
-echo "REQUIREMENT=one-independent-wifi-iface-per-radio"
-
-audit_iface() {
-	local section="$1" disabled mlo device devices ssid network
-	config_get disabled "$section" disabled 0
-	[ "$disabled" = "1" ] && return 0
-	config_get mlo "$section" mlo 0
-	config_get device "$section" device ""
-	config_get ssid "$section" ssid ""
-	config_get network "$section" network ""
-	devices="$device"
-	config_list_foreach "$section" device append_device
-	enabled=$((enabled + 1))
-	[ "$mlo" = "1" ] && mlo_enabled=$((mlo_enabled + 1))
-	case "$devices" in
-		*" "*) errors=$((errors + 1)); state="ERREUR_MULTI_RADIO" ;;
-		"") errors=$((errors + 1)); state="ERREUR_SANS_RADIO" ;;
-		*) state="OK" ;;
-	esac
-	[ "$mlo" = "1" ] && {
-		errors=$((errors + 1))
-		state="ERREUR_MLO"
-	}
-	printf 'IFACE=%s DEVICE=%s SSID=%s NETWORK=%s MLO=%s STATE=%s\n' \
-		"$section" "$devices" "$ssid" "$network" "$mlo" "$state"
+report() {
+	local state="$1" item="$2" value="$3" expected="$4"
+	printf 'CHECK=%s VALUE=%s EXPECTED=%s STATE=%s\n' \
+		"$item" "$value" "$expected" "$state"
+	checks=$((checks + 1))
+	[ "$state" = OK ] || errors=$((errors + 1))
 }
 
 append_device() {
@@ -44,16 +23,77 @@ append_device() {
 	esac
 }
 
+load_devices() {
+	local section="$1" single
+	devices=""
+	config_get single "$section" device ""
+	[ -n "$single" ] && append_device "$single"
+	config_list_foreach "$section" device append_device
+}
+
+devices_match() {
+	local expected="$1" item count=0 expected_count=0
+	for item in $expected; do
+		expected_count=$((expected_count + 1))
+		case " $devices " in *" $item "*) ;; *) return 1 ;; esac
+	done
+	for item in $devices; do count=$((count + 1)); done
+	[ "$count" -eq "$expected_count" ]
+}
+
+check_iface() {
+	local section="$1" expected_mlo="$2" expected_devices="$3"
+	local type disabled mlo ssid
+	type="$(uci -q get "wireless.$section")"
+	if [ "$type" != wifi-iface ]; then
+		report ERREUR "$section.exists" absent wifi-iface
+		return
+	fi
+	config_get disabled "$section" disabled 0
+	config_get mlo "$section" mlo 0
+	config_get ssid "$section" ssid ""
+	load_devices "$section"
+	[ "$disabled" = 0 ] && report OK "$section.enabled" 1 1 || report ERREUR "$section.enabled" 0 1
+	[ "$mlo" = "$expected_mlo" ] && report OK "$section.mlo" "$mlo" "$expected_mlo" || report ERREUR "$section.mlo" "$mlo" "$expected_mlo"
+	devices_match "$expected_devices" && report OK "$section.devices" "$devices" "$expected_devices" || report ERREUR "$section.devices" "${devices:-absent}" "$expected_devices"
+	printf 'IFACE=%s SSID=%s\n' "$section" "$ssid"
+}
+
+check_radio() {
+	local section="$1" band_expected="$2" htmode_expected="$3"
+	local band htmode country txpower
+	config_get band "$section" band ""
+	config_get htmode "$section" htmode ""
+	config_get country "$section" country ""
+	config_get txpower "$section" txpower ""
+	[ "$band" = "$band_expected" ] && report OK "$section.band" "$band" "$band_expected" || report ERREUR "$section.band" "${band:-absent}" "$band_expected"
+	[ "$htmode" = "$htmode_expected" ] && report OK "$section.htmode" "$htmode" "$htmode_expected" || report ERREUR "$section.htmode" "${htmode:-absent}" "$htmode_expected"
+	[ "$country" = FR ] && report OK "$section.country" "$country" FR || report ERREUR "$section.country" "${country:-absent}" FR
+	[ "$txpower" = 27 ] && report OK "$section.txpower_configured" "$txpower" 27 || report ERREUR "$section.txpower_configured" "${txpower:-absent}" 27
+}
+
+echo "BOARD=$board"
+echo "POLICY=passive-audit-only"
+echo "HARDWARE=one-BE14-card-two-PCIe-functions"
+echo "REQUIREMENT=three-MLO-groups-plus-Home-2G"
+
 config_load wireless
-config_foreach audit_iface wifi-iface
+check_radio radio0 2g EHT40
+check_radio radio1 5g EHT160
+check_radio radio2 6g EHT320
+check_iface cahier_main_mlo 1 "radio0 radio1 radio2"
+check_iface cahier_guest_mlo 1 "radio0 radio1 radio2"
+check_iface cahier_home5g_mlo 1 "radio0 radio1"
+check_iface cahier_home2g 0 "radio0"
 
-echo "ENABLED_IFACES=${enabled}"
-echo "MLO_ENABLED=${mlo_enabled}"
-echo "ERRORS=${errors}"
-
-if [ "$board" = "bananapi,bpi-r4-pro-8x" ] && [ "$errors" -ne 0 ]; then
-	echo "RESULT=NON_CONFORME"
-	exit 1
+echo "CHECKS=$checks"
+echo "ERRORS=$errors"
+if [ "$board" = bananapi,bpi-r4-pro-8x ] || [ "$board" = bananapi,bpi-r4 ]; then
+	if [ "$errors" -ne 0 ]; then
+		echo "RESULT=NON_CONFORME"
+		exit 1
+	fi
 fi
+
 echo "RESULT=CONFORME"
 exit 0

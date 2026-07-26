@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-wifi-cahier
-PKG_VERSION:=2.0.0
-PKG_RELEASE:=2
+PKG_VERSION:=3.0.0
+PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -12,14 +12,15 @@ include $(INCLUDE_DIR)/package.mk
 define Package/otb-wifi-cahier
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=OTB passive Wi-Fi per-radio policy audit
+  TITLE:=OTB passive Wi-Fi MLO policy audit
   DEPENDS:=+uci
 endef
 
 define Package/otb-wifi-cahier/description
- Passive audit of the OTB Wi-Fi policy. It never changes wireless UCI,
- reloads a radio or converts a configuration to MLO. The R4 Pro policy is one
- independent wifi-iface per radio with MLO disabled.
+ Passive audit of the OTB Wi-Fi policy. It never changes wireless UCI and
+ never reloads a radio. The expected layout is three MLO groups backed by the
+ single BE14 card through its two PCIe functions, plus the dedicated Home-2G
+ BSS outside MLO.
 endef
 
 define Build/Compile

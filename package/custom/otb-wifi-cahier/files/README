@@ -1,20 +1,29 @@
-OTB Wi-Fi cahier des charges V2 - mode passif
+OTB Wi-Fi cahier des charges V3 - audit MLO passif
 
-Ce paquet ne modifie jamais /etc/config/wireless.
-Il ne contient ni uci-default, ni service de démarrage, ni garde capable de
-redémarrer une radio. Il est donc sans effet sur le Wi-Fi lors d'un sysupgrade.
+Ce paquet ne modifie jamais /etc/config/wireless, ne redemarre aucun service et
+ne recharge aucune radio. Il verifie uniquement la configuration conservee.
 
-Exigence actuelle du R4 Pro :
+Architecture materielle :
 
-* MLO désactivé ;
-* une section wifi-iface indépendante par fréquence/radio ;
-* conservation des SSID, secrets, VLAN, canaux, pays et puissances existants ;
-* aucune migration automatique.
+* une seule carte BE14 ;
+* deux fonctions/liaisons PCIe pour cette meme carte ;
+* un wiphy multiradio 2,4/5/6 GHz.
 
-Audit manuel, sans impression des clés :
+Exigences :
+
+* Ti-Kanevedenn : MLO 2,4 + 5 + 6 GHz ;
+* Trefflay : MLO 2,4 + 5 + 6 GHz ;
+* Home-5G : MLO 2,4 + 5 GHz ;
+* Home-2G : BSS 2,4 GHz hors MLO ;
+* EHT40 / EHT160 / EHT320 ;
+* pays FR ;
+* consigne commune de 27 dBm pour le wiphy MLO.
+
+La consigne commune de 27 dBm ne contourne pas la reglementation. Le noyau et
+la base reglementaire FR limitent ensuite chaque lien a son maximum autorise
+(20 dBm en 2,4 GHz, 26 dBm sur le canal 100 en 5 GHz et 23 dBm en 6 GHz dans la
+configuration actuelle).
+
+Audit manuel, sans impression des cles :
 
     otb-wifi-cahier-audit
-
-Une éventuelle conversion de la configuration du R4 Pro est une opération
-distincte : sauvegarde horodatée, exécution explicite en console, validation
-radio par radio et retour arrière immédiat si nécessaire.
