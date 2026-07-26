@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=r4sud-ha-policy
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=12
+PKG_VERSION:=1.0.1
+PKG_RELEASE:=13
 PKG_LICENSE:=GPL-2.0-only
 PKGARCH:=all
 
@@ -39,6 +39,8 @@ define Package/r4sud-ha-policy/install
 	$(INSTALL_BIN) ./files/dockerd.init.safe $(1)/usr/libexec/r4sud-ha-policy/dockerd.init.safe
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/r4sud-ha-guard $(1)/etc/init.d/r4sud-ha-guard
+	$(INSTALL_DIR) $(1)/etc/sysctl.d
+	$(INSTALL_DATA) ./files/99-otb-ap-only.conf $(1)/etc/sysctl.d/99-otb-ap-only.conf
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./files/99-r4sud-containers-safe $(1)/etc/uci-defaults/99-r4sud-containers-safe
 	$(INSTALL_DIR) $(1)/usr/sbin

@@ -14,3 +14,4 @@ qu'apres installation, formatage explicite et montage stable du NVMe en ext4.
 
 Profil point d acces / switch : OpenVPN, MWAN3, PBR, SQM et UPnP ne sont pas embarques.
 Les configurations reseau, VLAN, bridge, bond, firewall et WireGuard existantes ne sont jamais modifiees automatiquement.
+- bridge netfilter force a 0 tant que dockerd est desactive afin de proteger le chemin AP/LACP.
