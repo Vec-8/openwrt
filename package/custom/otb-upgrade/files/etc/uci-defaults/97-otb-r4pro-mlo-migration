@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# Migration unique de la configuration Wi-Fi du R4 Pro vers la syntaxe MLO
+# attendue par netifd/wifi-scripts sous OpenWrt main. Les paramètres sensibles
+# (clés, chiffrement, réseaux) ne sont jamais recréés ni modifiés.
+board_name="$(ubus call system board 2>/dev/null | jsonfilter -e '@.board_name' 2>/dev/null)"
+[ "$board_name" = 'bananapi,bpi-r4-pro-8x' ] || exit 0
+
+[ "$(uci -q get otb-upgrade.main.r4pro_mlo_schema)" = '1' ] && exit 0
+
+for section in cahier_main_mlo cahier_guest_mlo cahier_home5g_mlo cahier_home2g; do
+	uci -q get "wireless.$section" >/dev/null || {
+		logger -t otb-wifi "Migration MLO non appliquee: section $section absente"
+		exit 0
+	}
+done
+
+uci -q batch <<'UCI' || exit 1
+set wireless.cahier_main_mlo.disabled='0'
+set wireless.cahier_main_mlo.mlo='1'
+delete wireless.cahier_main_mlo.device
+add_list wireless.cahier_main_mlo.device='radio0'
+add_list wireless.cahier_main_mlo.device='radio1'
+add_list wireless.cahier_main_mlo.device='radio2'
+set wireless.cahier_guest_mlo.disabled='0'
+set wireless.cahier_guest_mlo.mlo='1'
+delete wireless.cahier_guest_mlo.device
+add_list wireless.cahier_guest_mlo.device='radio0'
+add_list wireless.cahier_guest_mlo.device='radio1'
+add_list wireless.cahier_guest_mlo.device='radio2'
+set wireless.cahier_home5g_mlo.disabled='0'
+set wireless.cahier_home5g_mlo.mlo='1'
+delete wireless.cahier_home5g_mlo.device
+add_list wireless.cahier_home5g_mlo.device='radio0'
+add_list wireless.cahier_home5g_mlo.device='radio1'
+set wireless.cahier_home2g.disabled='0'
+delete wireless.cahier_home2g.mlo
+delete wireless.cahier_home2g.device
+add_list wireless.cahier_home2g.device='radio0'
+set wireless.lan_24.disabled='1'
+set wireless.lan_5.disabled='1'
+set wireless.lan_6.disabled='1'
+set wireless.guest_24.disabled='1'
+set wireless.guest_5.disabled='1'
+set wireless.guest_6.disabled='1'
+set wireless.iot_24.disabled='1'
+set wireless.iot_5.disabled='1'
+UCI
+
+uci -q commit wireless || exit 1
+uci -q set otb-upgrade.main.r4pro_mlo_schema='1'
+uci -q commit otb-upgrade || exit 1
+logger -t otb-wifi 'Migration R4 Pro appliquee: 3 groupes MLO et Home-2G hors MLO'
+exit 0

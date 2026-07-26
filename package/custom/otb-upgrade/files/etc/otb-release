@@ -2,8 +2,8 @@
 case "${BOARD_NAME:-}" in
 	bananapi,bpi-r4-pro-8x)
 		OTB_DEVICE='r4pro'
-		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-rss-v5-napi256-mt7990-probe-fenced-nomlo-20260726'
-		OTB_SEQUENCE='2026072602'
+		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-rss-v6-napi256-mt7990-mlo3-20260726'
+		OTB_SEQUENCE='2026072603'
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
