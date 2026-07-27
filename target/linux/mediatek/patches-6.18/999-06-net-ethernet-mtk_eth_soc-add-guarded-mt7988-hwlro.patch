@@ -162,7 +162,7 @@ With no classifier rule installed, aggregation remains inactive.
 +		 */
 +		i = mtk_is_netsys_v3_or_greater(eth) ? 1 : 0;
 +		if (i) {
-+			u32 ring0 = MTK_RX_DONE_INT_RING(eth,
++			u32 ring0 = MTK_RX_DONE_INT(
 +					MTK_HW_LRO_RING(eth, 0));
 +
 +			mtk_m32(eth, ring0, 0, reg_map->pdma.int_grp);
@@ -170,13 +170,13 @@ With no classifier rule installed, aggregation remains inactive.
 +			mtk_m32(eth, ring0, 0, reg_map->pdma.int_grp3);
 +		}
 +
-+		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i)),
-+			MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i)), reg_map->pdma.int_grp);
-+		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 1)),
-+			MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 1)),
++		mtk_m32(eth, MTK_RX_DONE_INT(MTK_HW_LRO_RING(eth, i)),
++			MTK_RX_DONE_INT(MTK_HW_LRO_RING(eth, i)), reg_map->pdma.int_grp);
++		mtk_m32(eth, MTK_RX_DONE_INT(MTK_HW_LRO_RING(eth, i + 1)),
++			MTK_RX_DONE_INT(MTK_HW_LRO_RING(eth, i + 1)),
 +			reg_map->pdma.int_grp + 0x4);
-+		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 2)),
-+			MTK_RX_DONE_INT_RING(eth,
++		mtk_m32(eth, MTK_RX_DONE_INT(MTK_HW_LRO_RING(eth, i + 2)),
++			MTK_RX_DONE_INT(
 +					     MTK_HW_LRO_RING(eth, i + 2)),
 +			reg_map->pdma.int_grp3);
 +	}
@@ -519,7 +519,7 @@ With no classifier rule installed, aggregation remains inactive.
 +				int ring = MTK_HW_LRO_RING(eth, i);
 +
 +				napi_enable(&eth->rx_napi[ring].napi);
-+				mtk_rx_irq_enable(eth, MTK_RX_DONE_INT_RING(eth, ring));
++				mtk_rx_irq_enable(eth, MTK_RX_DONE_INT(ring));
 +			}
 +		}
 +
@@ -538,7 +538,7 @@ With no classifier rule installed, aggregation remains inactive.
 +			int ring = MTK_HW_LRO_RING(eth, i);
 +
 +			mtk_rx_irq_disable(eth,
-+					   MTK_RX_DONE_INT_RING(eth, ring));
++					   MTK_RX_DONE_INT(ring));
 +			napi_disable(&eth->rx_napi[ring].napi);
  		}
  	}
@@ -575,13 +575,13 @@ With no classifier rule installed, aggregation remains inactive.
 +				for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
 +					lro_irq = MTK_HW_LRO_IRQ(eth, i);
 +					lro_ring = MTK_HW_LRO_RING(eth, i);
-+					irqname = devm_kasprintf(eth->dev, GFP_KERNEL,
-+								 "%s LRO RX %d",
-+								 dev_name(eth->dev), i);
++					/*
++					 * Reuse the stable device name for this shared LRO IRQ.
++					 */
 +					err = devm_request_irq(eth->dev,
 +							       eth->irq_pdma[lro_irq],
 +							       mtk_handle_irq_rx, IRQF_SHARED,
-+							       irqname,
++							       dev_name(eth->dev),
 +							       &eth->rx_napi[lro_ring]);
 +					if (err)
 +						goto err_free_dev;
