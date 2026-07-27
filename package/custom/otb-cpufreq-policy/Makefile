@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-cpufreq-policy
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
@@ -32,6 +32,8 @@ define Package/otb-cpufreq-policy/install
 	$(INSTALL_CONF) ./files/etc/config/otb-cpufreq $(1)/etc/config/otb-cpufreq
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/otb-cpufreq $(1)/etc/init.d/otb-cpufreq
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/etc/uci-defaults/95-otb-cpufreq $(1)/etc/uci-defaults/95-otb-cpufreq
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/otb-cpufreqd $(1)/usr/sbin/otb-cpufreqd
 	$(INSTALL_BIN) ./files/usr/sbin/otb-cpufreq-status $(1)/usr/sbin/otb-cpufreq-status

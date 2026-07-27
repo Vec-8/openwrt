@@ -10,6 +10,7 @@ load_policy() {
 	config_get governor main governor schedutil
 	config_get min_freq main min_freq 800000
 	config_get boost_max main boost_max_freq 1800000
+	config_get rate_limit main rate_limit_us 10000
 	config_get thermal_high main thermal_high 70000
 	config_get thermal_low main thermal_low 65000
 	config_get thermal_cap main thermal_cap_freq 1500000
@@ -36,6 +37,12 @@ apply_limit() {
 		echo "$min_freq" > "$policy/scaling_min_freq" || continue
 		echo "$requested_max" > "$policy/scaling_max_freq" || continue
 		echo "$selected" > "$policy/scaling_governor" || continue
+
+		# Le noyau 6.18 du MT7988 expose un délai schedutil unique.
+		if [ "$selected" = schedutil ] && \
+		   [ -w "$policy/schedutil/rate_limit_us" ]; then
+			echo "$rate_limit" > "$policy/schedutil/rate_limit_us"
+		fi
 		applied=$((applied + 1))
 	done
 	[ "$applied" -gt 0 ]
@@ -61,9 +68,29 @@ case "$interval" in ''|*[!0-9]*) interval=5 ;; esac
 [ "$interval" -ge 1 ] 2>/dev/null || interval=5
 
 state=unknown
+sensor_failed=0
 while :; do
 	temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
-	case "$temp" in ''|*[!0-9]*) temp=0 ;; esac
+	case "$temp" in
+		''|*[!0-9]*)
+			# Une sonde illisible ne doit jamais ouvrir le plafond à 1,8 GHz.
+			if [ "$state" = emergency ]; then
+				temp="$emergency_high"
+			else
+				temp="$thermal_high"
+			fi
+			if [ "$sensor_failed" -eq 0 ]; then
+				logger -t "$TAG" "sonde thermique illisible: plafond de sécurité appliqué"
+				sensor_failed=1
+			fi
+			;;
+		*)
+			if [ "$sensor_failed" -eq 1 ]; then
+				logger -t "$TAG" "sonde thermique de nouveau lisible"
+				sensor_failed=0
+			fi
+			;;
+	esac
 
 	case "$state" in
 		unknown)

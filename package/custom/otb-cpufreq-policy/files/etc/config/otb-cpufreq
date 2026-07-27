@@ -3,6 +3,8 @@ config policy 'main'
 	option governor 'schedutil'
 	option min_freq '800000'
 	option boost_max_freq '1800000'
+	# Délai minimum entre deux changements décidés par schedutil.
+	option rate_limit_us '10000'
 	option thermal_high '70000'
 	option thermal_low '65000'
 	option thermal_cap_freq '1500000'

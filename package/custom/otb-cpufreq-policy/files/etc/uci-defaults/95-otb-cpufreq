@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Activer la politique sur une image neuve comme après un sysupgrade conservant
+# la configuration. Le service ne touche ni au réseau ni au Wi-Fi.
+/etc/init.d/otb-cpufreq enable >/dev/null 2>&1 || exit 1
+/etc/init.d/otb-cpufreq restart >/dev/null 2>&1 || exit 1
+exit 0

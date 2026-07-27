@@ -1,0 +1,750 @@
+From: OTB <otb@local>
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add guarded MT7988 HW LRO
+
+Add the MT7988 HW-LRO rings alongside RSS, keep normal/RSS page pools, use
+the NETSYS v3 register layout and IRQ routing, and rebuild a deduplicated
+global destination-IP table. Exact TCP/IPv4 destination rules remain usable
+below a bond or bridge while unmatched and forwarded traffic stays on RSS.
+With no classifier rule installed, aggregation remains inactive.
+
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -60,6 +60,7 @@
+ 	.tx_irq_mask		= 0x1a1c,
+ 	.tx_irq_status		= 0x1a18,
+ 	.pdma = {
++		.lro_alt_timer	= 0x001c,
+ 		.rx_ptr		= 0x0900,
+ 		.rx_cnt_cfg	= 0x0904,
+ 		.pcrx_ptr	= 0x0908,
+@@ -144,6 +145,7 @@
+ 		.adma_rx_dbg0	= 0x4238,
+ 		.int_grp	= 0x4250,
+ 		.int_grp3	= 0x422c,
++		.lro_alt_timer	= 0x001c,
+ 		.lro_ctrl_dw0	= 0x4180,
+ 		.lro_alt_score_delta	= 0x424c,
+ 		.lro_rx1_dly_int	= 0x4270,
+@@ -205,6 +207,7 @@
+ 		.int_grp3	= 0x6a58,
+ 		.tx_delay_irq	= 0x6ab0,
+ 		.rx_delay_irq	= 0x6ac0,
++		.lro_alt_timer	= 0x6c00,
+ 		.lro_ctrl_dw0	= 0x6c08,
+ 		.lro_alt_score_delta	= 0x6c1c,
+ 		.lro_ring_dip_dw0	= 0x6c14,
+@@ -3044,7 +3047,7 @@
+ 
+ 	if (rx_flag == MTK_RX_FLAGS_HWLRO) {
+ 		rx_data_len = MTK_MAX_LRO_RX_LENGTH;
+-		rx_dma_size = MTK_HW_LRO_DMA_SIZE;
++		rx_dma_size = MTK_HW_LRO_DMA_SIZE(eth);
+ 	} else {
+ 		rx_data_len = ETH_DATA_LEN;
+ 		rx_dma_size = soc->rx.dma_size;
+@@ -3057,7 +3060,11 @@
+ 	if (!ring->data)
+ 		return -ENOMEM;
+ 
+-	if (mtk_page_pool_enabled(eth)) {
++	/*
++	 * HW-LRO rings use buffers larger than a page. Keep page_pool enabled
++	 * for the normal/RSS rings and bypass it only for the LRO rings.
++	 */
++	if (mtk_page_pool_enabled(eth) && rx_flag != MTK_RX_FLAGS_HWLRO) {
+ 		struct page_pool *pp;
+ 
+ 		pp = mtk_create_page_pool(eth, &ring->xdp_q, ring_no,
+@@ -3201,12 +3208,17 @@
+ 	}
+ }
+ 
++static int
++mtk_hwlro_sync_ipaddr(struct mtk_eth *eth, struct net_device *override_dev,
++		      bool override_enabled);
++
+ static int mtk_hwlro_rx_init(struct mtk_eth *eth)
+ {
+ 	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+-	int i;
+ 	u32 ring_ctrl_dw1 = 0, ring_ctrl_dw2 = 0, ring_ctrl_dw3 = 0;
+ 	u32 lro_ctrl_dw0 = 0, lro_ctrl_dw3 = 0;
++	u32 val;
++	int i;
+ 
+ 	/* set LRO rings to auto-learn modes */
+ 	ring_ctrl_dw2 |= MTK_RING_AUTO_LERAN_MODE;
+@@ -3225,30 +3237,56 @@
+ 	ring_ctrl_dw2 |= MTK_RING_MAX_AGG_CNT_L;
+ 	ring_ctrl_dw3 |= MTK_RING_MAX_AGG_CNT_H;
+ 
+-	for (i = 1; i < MTK_MAX_RX_RING_NUM; i++) {
+-		mtk_w32(eth, ring_ctrl_dw1, MTK_LRO_CTRL_DW1_CFG(i));
+-		mtk_w32(eth, ring_ctrl_dw2, MTK_LRO_CTRL_DW2_CFG(i));
+-		mtk_w32(eth, ring_ctrl_dw3, MTK_LRO_CTRL_DW3_CFG(i));
++	for (i = 1; i <= MTK_HW_LRO_RING_NUM(eth); i++) {
++		mtk_w32(eth, ring_ctrl_dw1,
++			MTK_LRO_CTRL_DW1_CFG(reg_map, i));
++		mtk_w32(eth, ring_ctrl_dw2,
++			MTK_LRO_CTRL_DW2_CFG(reg_map, i));
++		mtk_w32(eth, ring_ctrl_dw3,
++			MTK_LRO_CTRL_DW3_CFG(reg_map, i));
+ 	}
+ 
+ 	/* IPv4 checksum update enable */
+-	lro_ctrl_dw0 |= MTK_L3_CKS_UPD_EN;
++	lro_ctrl_dw0 |= MTK_L3_CKS_UPD_EN(eth);
+ 
+ 	/* switch priority comparison to packet count mode */
+ 	lro_ctrl_dw0 |= MTK_LRO_ALT_PKT_CNT_MODE;
+ 
++	/* Enable L4 PSH flag check. */
++	lro_ctrl_dw0 |= MTK_LRO_L4_CTRL_PSH_EN;
++
+ 	/* bandwidth threshold setting */
+-	mtk_w32(eth, MTK_HW_LRO_BW_THRE, MTK_PDMA_LRO_CTRL_DW2);
++	mtk_w32(eth, MTK_HW_LRO_BW_THRE,
++		MTK_PDMA_LRO_CTRL_DW2(reg_map));
+ 
+ 	/* auto-learn score delta setting */
+-	mtk_w32(eth, MTK_HW_LRO_REPLACE_DELTA, MTK_PDMA_LRO_ALT_SCORE_DELTA);
++	mtk_w32(eth, MTK_HW_LRO_REPLACE_DELTA,
++		MTK_PDMA_LRO_ALT_SCORE_DELTA(reg_map));
+ 
+ 	/* set refresh timer for altering flows to 1 sec. (unit: 20us) */
+ 	mtk_w32(eth, (MTK_HW_LRO_TIMER_UNIT << 16) | MTK_HW_LRO_REFRESH_TIME,
+-		MTK_PDMA_LRO_ALT_REFRESH_TIMER);
+-
+-	/* set HW LRO mode & the max aggregation count for rx packets */
+-	lro_ctrl_dw3 |= MTK_ADMA_MODE | (MTK_HW_LRO_MAX_AGG_CNT & 0xff);
++		reg_map->pdma.lro_alt_timer);
++
++	if (mtk_is_netsys_v3_or_greater(eth)) {
++		val = mtk_r32(eth, reg_map->pdma.rx_cfg);
++		val |= (MTK_PDMA_LRO_SDL + MTK_MAX_RX_LENGTH) <<
++		       MTK_RX_CFG_SDL_OFFSET;
++		mtk_w32(eth, val, reg_map->pdma.rx_cfg);
++
++		lro_ctrl_dw0 |= MTK_PDMA_LRO_SDL <<
++				MTK_CTRL_DW0_SDL_OFFSET;
++		lro_ctrl_dw0 |= MTK_LRO_CRSN_BNW(eth);
++
++		/* Do not aggregate PPE CPU-reason traffic. */
++		mtk_w32(eth, U32_MAX, MTK_PDMA_LRO_CTRL_DW1(reg_map));
++	} else {
++		/* Set HW LRO mode and maximum aggregation count. */
++		lro_ctrl_dw3 |= MTK_ADMA_MODE |
++				(MTK_HW_LRO_MAX_AGG_CNT & 0xff);
++	}
++
++	/* Support up to four VLAN levels, including the switch special tag. */
++	lro_ctrl_dw3 |= MTK_LRO_VLAN_VID_CMP_DEPTH | MTK_LRO_VLAN_EN;
+ 
+ 	/* the minimal remaining room of SDL0 in RXD for lro aggregation */
+ 	lro_ctrl_dw3 |= MTK_LRO_MIN_RXD_SDL;
+@@ -3256,25 +3294,52 @@
+ 	/* enable HW LRO */
+ 	lro_ctrl_dw0 |= MTK_LRO_EN;
+ 
+-	mtk_w32(eth, lro_ctrl_dw3, MTK_PDMA_LRO_CTRL_DW3);
+-	mtk_w32(eth, lro_ctrl_dw0, MTK_PDMA_LRO_CTRL_DW0);
+-
+-	return 0;
++	mtk_w32(eth, lro_ctrl_dw3, MTK_PDMA_LRO_CTRL_DW3(reg_map));
++	mtk_w32(eth, lro_ctrl_dw0, MTK_PDMA_LRO_CTRL_DW0(reg_map));
++
++	if (mtk_is_netsys_v2_or_greater(eth)) {
++		/*
++		 * On NETSYS v3, physical LRO ring 4 remains in the default
++		 * PDMA0 group, just like RSS ring 0. Explicitly keep it out
++		 * of groups 1..3, then route rings 5..7 to PDMA1..3.
++		 */
++		i = mtk_is_netsys_v3_or_greater(eth) ? 1 : 0;
++		if (i) {
++			u32 ring0 = MTK_RX_DONE_INT_RING(eth,
++					MTK_HW_LRO_RING(eth, 0));
++
++			mtk_m32(eth, ring0, 0, reg_map->pdma.int_grp);
++			mtk_m32(eth, ring0, 0, reg_map->pdma.int_grp + 0x4);
++			mtk_m32(eth, ring0, 0, reg_map->pdma.int_grp3);
++		}
++
++		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i)),
++			MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i)), reg_map->pdma.int_grp);
++		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 1)),
++			MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 1)),
++			reg_map->pdma.int_grp + 0x4);
++		mtk_m32(eth, MTK_RX_DONE_INT_RING(eth, MTK_HW_LRO_RING(eth, i + 2)),
++			MTK_RX_DONE_INT_RING(eth,
++					     MTK_HW_LRO_RING(eth, i + 2)),
++			reg_map->pdma.int_grp3);
++	}
++
++	return mtk_hwlro_sync_ipaddr(eth, NULL, false);
+ }
+ 
+ static void mtk_hwlro_rx_uninit(struct mtk_eth *eth)
+ {
+ 	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
++	u32 val;
+ 	int i;
+-	u32 val;
+ 
+ 	/* relinquish lro rings, flush aggregated packets */
+-	mtk_w32(eth, MTK_LRO_RING_RELINQUISH_REQ, MTK_PDMA_LRO_CTRL_DW0);
++	mtk_w32(eth, MTK_LRO_RING_RELINQUISH_REQ(eth), MTK_PDMA_LRO_CTRL_DW0(reg_map));
+ 
+ 	/* wait for relinquishments done */
+ 	for (i = 0; i < 10; i++) {
+-		val = mtk_r32(eth, MTK_PDMA_LRO_CTRL_DW0);
+-		if (val & MTK_LRO_RING_RELINQUISH_DONE) {
++		val = mtk_r32(eth, MTK_PDMA_LRO_CTRL_DW0(reg_map));
++		if (val & MTK_LRO_RING_RELINQUISH_DONE(eth)) {
+ 			msleep(20);
+ 			continue;
+ 		}
+@@ -3282,27 +3347,29 @@
+ 	}
+ 
+ 	/* invalidate lro rings */
+-	for (i = 1; i < MTK_MAX_RX_RING_NUM; i++)
+-		mtk_w32(eth, 0, MTK_LRO_CTRL_DW2_CFG(i));
++	for (i = 1; i <= MTK_HW_LRO_RING_NUM(eth); i++)
++		mtk_w32(eth, 0, MTK_LRO_CTRL_DW2_CFG(reg_map, i));
+ 
+ 	/* disable HW LRO */
+-	mtk_w32(eth, 0, MTK_PDMA_LRO_CTRL_DW0);
+-}
+-
+-static void mtk_hwlro_val_ipaddr(struct mtk_eth *eth, int idx, __be32 ip)
++	mtk_w32(eth, 0, MTK_PDMA_LRO_CTRL_DW0(reg_map));
++}
++
++static void mtk_hwlro_val_ipaddr(struct mtk_eth *eth, int idx, u32 ip)
+ {
+ 	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+ 	u32 reg_val;
+ 
+-	reg_val = mtk_r32(eth, MTK_LRO_CTRL_DW2_CFG(idx));
++	reg_val = mtk_r32(eth, MTK_LRO_CTRL_DW2_CFG(reg_map, idx));
+ 
+ 	/* invalidate the IP setting */
+-	mtk_w32(eth, (reg_val & ~MTK_RING_MYIP_VLD), MTK_LRO_CTRL_DW2_CFG(idx));
+-
+-	mtk_w32(eth, ip, MTK_LRO_DIP_DW0_CFG(idx));
++	mtk_w32(eth, reg_val & ~MTK_RING_MYIP_VLD,
++		MTK_LRO_CTRL_DW2_CFG(reg_map, idx));
++
++	mtk_w32(eth, ip, MTK_LRO_DIP_DW0_CFG(reg_map, idx));
+ 
+ 	/* validate the IP setting */
+-	mtk_w32(eth, (reg_val | MTK_RING_MYIP_VLD), MTK_LRO_CTRL_DW2_CFG(idx));
++	mtk_w32(eth, reg_val | MTK_RING_MYIP_VLD,
++		MTK_LRO_CTRL_DW2_CFG(reg_map, idx));
+ }
+ 
+ static void mtk_hwlro_inval_ipaddr(struct mtk_eth *eth, int idx)
+@@ -3310,12 +3377,13 @@
+ 	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
+ 	u32 reg_val;
+ 
+-	reg_val = mtk_r32(eth, MTK_LRO_CTRL_DW2_CFG(idx));
++	reg_val = mtk_r32(eth, MTK_LRO_CTRL_DW2_CFG(reg_map, idx));
+ 
+ 	/* invalidate the IP setting */
+-	mtk_w32(eth, (reg_val & ~MTK_RING_MYIP_VLD), MTK_LRO_CTRL_DW2_CFG(idx));
+-
+-	mtk_w32(eth, 0, MTK_LRO_DIP_DW0_CFG(idx));
++	mtk_w32(eth, reg_val & ~MTK_RING_MYIP_VLD,
++		MTK_LRO_CTRL_DW2_CFG(reg_map, idx));
++
++	mtk_w32(eth, 0, MTK_LRO_DIP_DW0_CFG(reg_map, idx));
+ }
+ 
+ static int mtk_hwlro_get_ip_cnt(struct mtk_mac *mac)
+@@ -3329,6 +3397,71 @@
+ 	}
+ 
+ 	return cnt;
++}
++
++static int
++mtk_hwlro_sync_ipaddr(struct mtk_eth *eth, struct net_device *override_dev,
++		      bool override_enabled)
++{
++	u32 ipaddr[MTK_MAX_RX_RING_NUM] = {};
++	int first, count = 0;
++	int i, j, k;
++
++	/*
++	 * The DIP table is global to the frame engine, not per MAC. Rebuild
++	 * it from the rules of all LRO-enabled netdevs, deduplicating an IP
++	 * used on several MACs. This avoids stale entries and slot leaks.
++	 */
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		struct net_device *dev = eth->netdev[i];
++		struct mtk_mac *mac;
++		bool enabled;
++
++		if (!dev)
++			continue;
++
++		mac = netdev_priv(dev);
++		enabled = !!(dev->features & NETIF_F_LRO);
++		if (dev == override_dev)
++			enabled = override_enabled;
++
++		/*
++		 * A bond or bridge upper clears NETIF_F_LRO recursively.
++		 * Explicit HW classifier rules are exact TCP/IPv4 destination
++		 * matches, so they remain safe for locally terminated traffic:
++		 * unmatched traffic, including forwarded traffic, stays on the
++		 * normal RSS rings.  A rule is therefore also an explicit
++		 * opt-in to filtered HW-LRO below an upper device.
++		 */
++		if (!enabled && !mac->hwlro_ip_cnt)
++			continue;
++
++		for (j = 0; j < MTK_MAX_LRO_IP_CNT; j++) {
++			u32 ip = mac->hwlro_ip[j];
++
++			if (!ip)
++				continue;
++
++			for (k = 0; k < count; k++)
++				if (ipaddr[k] == ip)
++					break;
++			if (k != count)
++				continue;
++
++			if (count >= MTK_HW_LRO_DIP_NUM(eth))
++				return -ENOSPC;
++			ipaddr[count++] = ip;
++		}
++	}
++
++	first = mtk_is_netsys_v3_or_greater(eth) ? 1 : 0;
++	for (i = 0; i < MTK_HW_LRO_DIP_NUM(eth); i++)
++		mtk_hwlro_inval_ipaddr(eth, first + i);
++
++	for (i = 0; i < count; i++)
++		mtk_hwlro_val_ipaddr(eth, first + i, ipaddr[i]);
++
++	return 0;
+ }
+ 
+ static int mtk_hwlro_add_ipaddr(struct net_device *dev,
+@@ -3338,19 +3471,27 @@
+ 		(struct ethtool_rx_flow_spec *)&cmd->fs;
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+-	int hwlro_idx;
++	u32 old_ip;
++	u32 ip4dst;
++	int err;
+ 
+ 	if ((fsp->flow_type != TCP_V4_FLOW) ||
+ 	    (!fsp->h_u.tcp_ip4_spec.ip4dst) ||
+ 	    (fsp->location > 1))
+ 		return -EINVAL;
+ 
+-	mac->hwlro_ip[fsp->location] = htonl(fsp->h_u.tcp_ip4_spec.ip4dst);
+-	hwlro_idx = (mac->id * MTK_MAX_LRO_IP_CNT) + fsp->location;
+-
++	ip4dst = ntohl(fsp->h_u.tcp_ip4_spec.ip4dst);
++	old_ip = mac->hwlro_ip[fsp->location];
++	mac->hwlro_ip[fsp->location] = ip4dst;
+ 	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
+ 
+-	mtk_hwlro_val_ipaddr(eth, hwlro_idx, mac->hwlro_ip[fsp->location]);
++	err = mtk_hwlro_sync_ipaddr(eth, NULL, false);
++	if (err) {
++		mac->hwlro_ip[fsp->location] = old_ip;
++		mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
++		mtk_hwlro_sync_ipaddr(eth, NULL, false);
++		return err;
++	}
+ 
+ 	return 0;
+ }
+@@ -3362,35 +3503,34 @@
+ 		(struct ethtool_rx_flow_spec *)&cmd->fs;
+ 	struct mtk_mac *mac = netdev_priv(dev);
+ 	struct mtk_eth *eth = mac->hw;
+-	int hwlro_idx;
++	u32 ip4dst;
+ 
+ 	if (fsp->location > 1)
+ 		return -EINVAL;
+ 
++	ip4dst = mac->hwlro_ip[fsp->location];
++	if (!ip4dst)
++		return -ENOENT;
++
+ 	mac->hwlro_ip[fsp->location] = 0;
+-	hwlro_idx = (mac->id * MTK_MAX_LRO_IP_CNT) + fsp->location;
+-
+ 	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
+-
+-	mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
++	mtk_hwlro_sync_ipaddr(eth, NULL, false);
+ 
+ 	return 0;
+ }
+ 
++static int mtk_hwlro_netdev_enable(struct net_device *dev)
++{
++	struct mtk_mac *mac = netdev_priv(dev);
++
++	return mtk_hwlro_sync_ipaddr(mac->hw, dev, true);
++}
++
+ static void mtk_hwlro_netdev_disable(struct net_device *dev)
+ {
+ 	struct mtk_mac *mac = netdev_priv(dev);
+-	struct mtk_eth *eth = mac->hw;
+-	int i, hwlro_idx;
+-
+-	for (i = 0; i < MTK_MAX_LRO_IP_CNT; i++) {
+-		mac->hwlro_ip[i] = 0;
+-		hwlro_idx = (mac->id * MTK_MAX_LRO_IP_CNT) + i;
+-
+-		mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
+-	}
+-
+-	mac->hwlro_ip_cnt = 0;
++
++	mtk_hwlro_sync_ipaddr(mac->hw, dev, false);
+ }
+ 
+ static int mtk_hwlro_get_fdir_entry(struct net_device *dev,
+@@ -3405,15 +3545,15 @@
+ 
+ 	/* only tcp dst ipv4 is meaningful, others are meaningless */
+ 	fsp->flow_type = TCP_V4_FLOW;
+-	fsp->h_u.tcp_ip4_spec.ip4dst = ntohl(mac->hwlro_ip[fsp->location]);
++	fsp->h_u.tcp_ip4_spec.ip4dst = htonl(mac->hwlro_ip[fsp->location]);
+ 	fsp->m_u.tcp_ip4_spec.ip4dst = 0;
+ 
+ 	fsp->h_u.tcp_ip4_spec.ip4src = 0;
+-	fsp->m_u.tcp_ip4_spec.ip4src = 0xffffffff;
++	fsp->m_u.tcp_ip4_spec.ip4src = htonl(~0U);
+ 	fsp->h_u.tcp_ip4_spec.psrc = 0;
+-	fsp->m_u.tcp_ip4_spec.psrc = 0xffff;
++	fsp->m_u.tcp_ip4_spec.psrc = htons(~0);
+ 	fsp->h_u.tcp_ip4_spec.pdst = 0;
+-	fsp->m_u.tcp_ip4_spec.pdst = 0xffff;
++	fsp->m_u.tcp_ip4_spec.pdst = htons(~0);
+ 	fsp->h_u.tcp_ip4_spec.tos = 0;
+ 	fsp->m_u.tcp_ip4_spec.tos = 0xff;
+ 
+@@ -3477,10 +3617,12 @@
+ 
+ 	if (RX_DESC_OFS(eth, 1) == sizeof(struct mtk_rx_dma)) {
+ 		/* Set RSS rings to PSE modes */
+-		for (i = 1; i <= MTK_HW_LRO_RING_NUM; i++) {
+-			val = mtk_r32(eth, MTK_LRO_CTRL_DW2_CFG(i));
++		for (i = 1; i <= MTK_HW_LRO_RING_NUM(eth); i++) {
++			val = mtk_r32(eth,
++				      MTK_LRO_CTRL_DW2_CFG(reg_map, i));
+ 			val |= MTK_RING_PSE_MODE;
+-			mtk_w32(eth, val, MTK_LRO_CTRL_DW2_CFG(i));
++			mtk_w32(eth, val,
++				MTK_LRO_CTRL_DW2_CFG(reg_map, i));
+ 		}
+ 
+ 		/* Enable non-lro multiple rx */
+@@ -3573,6 +3715,8 @@
+ 
+ 	if ((diff & NETIF_F_LRO) && !(features & NETIF_F_LRO))
+ 		mtk_hwlro_netdev_disable(dev);
++	else if ((diff & NETIF_F_LRO) && (features & NETIF_F_LRO))
++		return mtk_hwlro_netdev_enable(dev);
+ 
+ 	return 0;
+ }
+@@ -3630,8 +3774,8 @@
+ 		return err;
+ 
+ 	if (eth->hwlro) {
+-		for (i = 1; i < MTK_MAX_RX_RING_NUM; i++) {
+-			err = mtk_rx_alloc(eth, i, MTK_RX_FLAGS_HWLRO);
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++			err = mtk_rx_alloc(eth, MTK_HW_LRO_RING(eth, i), MTK_RX_FLAGS_HWLRO);
+ 			if (err)
+ 				return err;
+ 		}
+@@ -3693,8 +3837,8 @@
+ 
+ 	if (eth->hwlro) {
+ 		mtk_hwlro_rx_uninit(eth);
+-		for (i = 1; i < MTK_MAX_RX_RING_NUM; i++)
+-			mtk_rx_clean(eth, &eth->rx_ring[i], false);
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++)
++			mtk_rx_clean(eth, &eth->rx_ring[MTK_HW_LRO_RING(eth, i)], false);
+ 	}
+ 
+ 	if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
+@@ -3896,14 +4040,19 @@
+ 		}
+ 		mtk_w32(eth, val, reg_map->qdma.glo_cfg);
+ 
+-		mtk_w32(eth,
+-			MTK_RX_DMA_EN | rx_2b_offset |
+-			MTK_RX_BT_32DWORDS | MTK_MULTI_EN,
+-			reg_map->pdma.glo_cfg);
++		val = mtk_r32(eth, reg_map->pdma.glo_cfg);
++		val |= MTK_RX_DMA_EN | rx_2b_offset |
++		       MTK_RX_BT_32DWORDS | MTK_MULTI_EN;
++		mtk_w32(eth, val, reg_map->pdma.glo_cfg);
+ 	} else {
+ 		mtk_w32(eth, MTK_TX_WB_DDONE | MTK_TX_DMA_EN | MTK_RX_DMA_EN |
+ 			MTK_MULTI_EN | MTK_PDMA_SIZE_8DWORDS,
+ 			reg_map->pdma.glo_cfg);
++	}
++
++	if (eth->hwlro && mtk_is_netsys_v3_or_greater(eth)) {
++		val = mtk_r32(eth, reg_map->pdma.glo_cfg);
++		mtk_w32(eth, val | MTK_RX_DMA_LRO_EN, reg_map->pdma.glo_cfg);
+ 	}
+ 
+ 	return 0;
+@@ -4113,6 +4262,15 @@
+ 			}
+ 		}
+ 
++		if (eth->hwlro) {
++			for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++				int ring = MTK_HW_LRO_RING(eth, i);
++
++				napi_enable(&eth->rx_napi[ring].napi);
++				mtk_rx_irq_enable(eth, MTK_RX_DONE_INT_RING(eth, ring));
++			}
++		}
++
+ 		refcount_set(&eth->dma_refcnt, 1);
+ 	} else {
+ 		refcount_inc(&eth->dma_refcnt);
+@@ -4205,6 +4363,16 @@
+ 		for (i = 1; i < MTK_RX_RSS_NUM; i++) {
+ 			mtk_rx_irq_disable(eth, MTK_RX_DONE_INT(MTK_RSS_RING(i)));
+ 			napi_disable(&eth->rx_napi[MTK_RSS_RING(i)].napi);
++		}
++	}
++
++	if (eth->hwlro) {
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++			int ring = MTK_HW_LRO_RING(eth, i);
++
++			mtk_rx_irq_disable(eth,
++					   MTK_RX_DONE_INT_RING(eth, ring));
++			napi_disable(&eth->rx_napi[ring].napi);
+ 		}
+ 	}
+ 
+@@ -4663,6 +4831,14 @@
+ 			rx_napi = &eth->rx_napi[MTK_RSS_RING(i)];
+ 			rx_napi->eth = eth;
+ 			rx_napi->rx_ring = &eth->rx_ring[MTK_RSS_RING(i)];
++		}
++	}
++
++	if (eth->hwlro) {
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++			rx_napi = &eth->rx_napi[MTK_HW_LRO_RING(eth, i)];
++			rx_napi->eth = eth;
++			rx_napi->rx_ring = &eth->rx_ring[MTK_HW_LRO_RING(eth, i)];
+ 		}
+ 	}
+ 
+@@ -5891,6 +6067,7 @@
+ {
+ 	struct resource *res = NULL;
+ 	struct device_node *mac_np;
++	u8 lro_irq, lro_ring;
+ 	struct mtk_eth *eth;
+ 	int err, i;
+ 
+@@ -6126,6 +6303,23 @@
+ 						goto err_free_dev;
+ 				}
+ 			}
++
++			if (eth->hwlro) {
++				for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++					lro_irq = MTK_HW_LRO_IRQ(eth, i);
++					lro_ring = MTK_HW_LRO_RING(eth, i);
++					irqname = devm_kasprintf(eth->dev, GFP_KERNEL,
++								 "%s LRO RX %d",
++								 dev_name(eth->dev), i);
++					err = devm_request_irq(eth->dev,
++							       eth->irq_pdma[lro_irq],
++							       mtk_handle_irq_rx, IRQF_SHARED,
++							       irqname,
++							       &eth->rx_napi[lro_ring]);
++					if (err)
++						goto err_free_dev;
++				}
++			}
+ 		} else {
+ 			err = devm_request_irq(eth->dev, eth->irq_fe[MTK_FE_IRQ_RX],
+ 					       mtk_handle_irq_rx, 0,
+@@ -6196,6 +6390,13 @@
+ 			netif_napi_add_weight(eth->dummy_dev,
+ 					      &eth->rx_napi[MTK_RSS_RING(i)].napi,
+ 					      mtk_napi_rx, MTK_NAPI_WEIGHT);
++	}
++
++	if (eth->hwlro) {
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
++			netif_napi_add(eth->dummy_dev, &eth->rx_napi[MTK_HW_LRO_RING(eth, i)].napi,
++				       mtk_napi_rx);
++		}
+ 	}
+ 
+ 	platform_set_drvdata(pdev, eth);
+@@ -6246,6 +6447,12 @@
+ 		for (i = 1; i < MTK_RX_RSS_NUM; i++)
+ 			netif_napi_del(&eth->rx_napi[MTK_RSS_RING(i)].napi);
+ 	}
++
++	if (eth->hwlro) {
++		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++)
++			netif_napi_del(&eth->rx_napi[MTK_HW_LRO_RING(eth, i)].napi);
++	}
++
+ 	mtk_cleanup(eth);
+ 	free_netdev(eth->dummy_dev);
+ 	mtk_mdio_cleanup(eth);
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -74,10 +74,9 @@
+ 
+ #define MTK_QRX_OFFSET		0x10
+ 
+-#define MTK_MAX_RX_RING_NUM	4
+-#define MTK_HW_LRO_DMA_SIZE	8
+-
+-#define	MTK_MAX_LRO_RX_LENGTH		(4096 * 3)
++#define MTK_MAX_RX_RING_NUM	(8)
++#define MTK_HW_LRO_DMA_SIZE(eth)	(mtk_is_netsys_v3_or_greater(eth) ? 64 : 8)
++#define	MTK_MAX_LRO_RX_LENGTH		(4096 * 3 + MTK_MAX_RX_LENGTH)
+ #define	MTK_MAX_LRO_IP_CNT		2
+ #define	MTK_HW_LRO_TIMER_UNIT		1	/* 20 us */
+ #define	MTK_HW_LRO_REFRESH_TIME		50000	/* 1 sec. */
+@@ -112,9 +111,6 @@
+ 
+ #define MTK_PDMA_IRQ_NUM	(4)
+ 
+-/* PDMA HW LRO Alter Flow Timer Register */
+-#define MTK_PDMA_LRO_ALT_REFRESH_TIMER	0x1c
+-
+ /* Frame Engine Interrupt Grouping Register */
+ #define MTK_FE_INT_GRP		0x20
+ 
+@@ -193,31 +189,39 @@
+ #define MTK_CDMM_THRES		0x165c
+ 
+ /* PDMA HW LRO Control Registers */
+-#define MTK_PDMA_LRO_CTRL_DW0	0x980
+-#define MTK_HW_LRO_RING_NUM		(mtk_is_netsys_v3_or_greater(eth) ? 4 : 3)
++#define MTK_HW_LRO_DIP_NUM(eth)		(mtk_is_netsys_v3_or_greater(eth) ? 4 : 3)
++#define MTK_HW_LRO_RING_NUM(eth)	(mtk_is_netsys_v3_or_greater(eth) ? 4 : 3)
++#define MTK_HW_LRO_RING(eth, x)		((x) + (mtk_is_netsys_v3_or_greater(eth) ? 4 : 1))
++#define MTK_HW_LRO_IRQ(eth, x)		((x) + (mtk_is_netsys_v3_or_greater(eth) ? 0 : 1))
++#define MTK_LRO_CRSN_BNW(eth)		BIT(mtk_is_netsys_v3_or_greater(eth) ? 22 : 6)
+ #define MTK_LRO_EN			BIT(0)
+ #define MTK_NON_LRO_MULTI_EN		BIT(2)
+ #define MTK_LRO_DLY_INT_EN		BIT(5)
+-#define MTK_L3_CKS_UPD_EN		BIT(7)
+-#define MTK_L3_CKS_UPD_EN_V2		BIT(19)
++#define MTK_L3_CKS_UPD_EN(eth)		BIT(mtk_is_netsys_v3_or_greater(eth) ? 19 : 7)
+ #define MTK_LRO_ALT_PKT_CNT_MODE	BIT(21)
+-#define MTK_LRO_RING_RELINQUISH_REQ	(0x7 << 26)
+-#define MTK_LRO_RING_RELINQUISH_REQ_V2	(0xf << 24)
+-#define MTK_LRO_RING_RELINQUISH_DONE	(0x7 << 29)
+-#define MTK_LRO_RING_RELINQUISH_DONE_V2	(0xf << 28)
+-
+-#define MTK_PDMA_LRO_CTRL_DW1	0x984
+-#define MTK_PDMA_LRO_CTRL_DW2	0x988
+-#define MTK_PDMA_LRO_CTRL_DW3	0x98c
++#define MTK_LRO_RING_RELINQUISH_REQ(eth)	\
++	(mtk_is_netsys_v3_or_greater(eth) ? 0xf << 24 : 0x7 << 26)
++#define MTK_LRO_RING_RELINQUISH_DONE(eth)	\
++	(mtk_is_netsys_v3_or_greater(eth) ? 0xf << 28 : 0x7 << 29)
++
++#define MTK_PDMA_LRO_CTRL_DW0(reg_map)	((reg_map)->pdma.lro_ctrl_dw0)
++#define MTK_PDMA_LRO_CTRL_DW1(reg_map)	((reg_map)->pdma.lro_ctrl_dw0 + 0x04)
++#define MTK_PDMA_LRO_CTRL_DW2(reg_map)	((reg_map)->pdma.lro_ctrl_dw0 + 0x08)
++#define MTK_PDMA_LRO_CTRL_DW3(reg_map)	((reg_map)->pdma.lro_ctrl_dw0 + 0x0c)
++#define MTK_LRO_VLAN_EN			(0xf << 8)
++#define MTK_LRO_VLAN_VID_CMP_DEPTH	(0x3 << 12)
++#define MTK_LRO_L4_CTRL_PSH_EN		BIT(23)
+ #define MTK_ADMA_MODE		BIT(15)
+ #define MTK_LRO_MIN_RXD_SDL	(MTK_HW_LRO_SDL_REMAIN_ROOM << 16)
++
++#define MTK_CTRL_DW0_SDL_OFFSET	3
+ 
+ #define MTK_RX_DMA_LRO_EN	BIT(8)
+ #define MTK_MULTI_EN		BIT(10)
+ #define MTK_PDMA_SIZE_8DWORDS	(1 << 4)
+ 
+ /* PDMA RSS Control Registers */
+-#define MTK_RX_NAPI_NUM			(4)
++#define MTK_RX_NAPI_NUM			(8)
+ #define MTK_RX_RSS_NUM			(eth->soc->rss_num)
+ #define MTK_RSS_RING(x)			(x)
+ #define MTK_RSS_EN			BIT(0)
+@@ -253,17 +257,19 @@
+ #define MTK_PDMA_DELAY_PTIME_MASK	0xff
+ 
+ /* PDMA HW LRO Alter Flow Delta Register */
+-#define MTK_PDMA_LRO_ALT_SCORE_DELTA	0xa4c
++#define MTK_PDMA_LRO_ALT_SCORE_DELTA(reg_map)	((reg_map)->pdma.lro_alt_score_delta)
+ 
+ /* PDMA HW LRO IP Setting Registers */
+-#define MTK_LRO_RX_RING0_DIP_DW0	0xb04
+-#define MTK_LRO_DIP_DW0_CFG(x)		(MTK_LRO_RX_RING0_DIP_DW0 + (x * 0x40))
++#define MTK_LRO_DIP_DW0_CFG(reg_map, x)	((reg_map)->pdma.lro_ring_dip_dw0 + ((x) * 0x40))
+ #define MTK_RING_MYIP_VLD		BIT(9)
+ 
+ /* PDMA HW LRO Ring Control Registers */
+-#define MTK_LRO_CTRL_DW1_CFG(x)		(reg_map->pdma.lro_ring_ctrl_dw1 + (x * 0x40))
+-#define MTK_LRO_CTRL_DW2_CFG(x)		(reg_map->pdma.lro_ring_ctrl_dw1 + 0x4 + (x * 0x40))
+-#define MTK_LRO_CTRL_DW3_CFG(x)		(reg_map->pdma.lro_ring_ctrl_dw1 + 0x8 + (x * 0x40))
++#define MTK_LRO_CTRL_DW1_CFG(reg_map, x)	\
++	((reg_map)->pdma.lro_ring_ctrl_dw1 + ((x) * 0x40))
++#define MTK_LRO_CTRL_DW2_CFG(reg_map, x)	\
++	((reg_map)->pdma.lro_ring_ctrl_dw1 + 0x4 + ((x) * 0x40))
++#define MTK_LRO_CTRL_DW3_CFG(reg_map, x)	\
++	((reg_map)->pdma.lro_ring_ctrl_dw1 + 0x8 + ((x) * 0x40))
+ #define MTK_RING_AGE_TIME_L		((MTK_HW_LRO_AGE_TIME & 0x3ff) << 22)
+ #define MTK_RING_AGE_TIME_H		((MTK_HW_LRO_AGE_TIME >> 10) & 0x3f)
+ #define MTK_RING_PSE_MODE		(1 << 6)
+@@ -1270,7 +1276,7 @@
+ 		      MTK_MUX_GMAC123_TO_GEPHY_SGMII | \
+ 		      MTK_MUX_GMAC123_TO_USXGMII | MTK_MUX_GMAC2_TO_2P5GPHY | \
+ 		      MTK_QDMA | MTK_RSTCTRL_PPE1 | MTK_RSTCTRL_PPE2 | MTK_SRAM | \
+-		      MTK_PDMA_INT | MTK_RSS)
++		      MTK_PDMA_INT | MTK_RSS | MTK_HWLRO)
+ 
+ struct mtk_tx_dma_desc_info {
+ 	dma_addr_t	addr;
+@@ -1303,6 +1309,7 @@
+ 		u32	int_grp3;		/* interrupt group3 */
+ 		u32	tx_delay_irq;		/* tx delay interrupt */
+ 		u32	rx_delay_irq;		/* rx delay interrupt */
++		u32	lro_alt_timer;		/* lro auto-learn refresh timer */
+ 		u32	lro_ctrl_dw0;		/* lro ctrl dword0 */
+ 		u32	lro_alt_score_delta;	/* lro auto-learn score delta */
+ 		u32	lro_rx1_dly_int;	/* lro rx ring1 delay interrupt */
+@@ -1543,7 +1550,7 @@
+ 	struct phylink_pcs		*available_pcs[2];
+ 	struct mtk_eth			*hw;
+ 	struct mtk_hw_stats		*hw_stats;
+-	__be32				hwlro_ip[MTK_MAX_LRO_IP_CNT];
++	u32				hwlro_ip[MTK_MAX_LRO_IP_CNT];
+ 	int				hwlro_ip_cnt;
+ 	unsigned int			syscfg0;
+ 	struct notifier_block		device_notifier;
