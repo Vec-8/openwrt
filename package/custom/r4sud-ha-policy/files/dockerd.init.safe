@@ -14,12 +14,12 @@ R4SUD_STORAGE_MOUNT="/srv"
 R4SUD_STORAGE_MARKER="/srv/.r4sud-ha-storage-ready"
 
 r4sud_storage_ready() {
-	awk -v m="${R4SUD_STORAGE_MOUNT}" '$2 == m { found=1 } END { exit !found }' /proc/mounts \
+	awk -v m="${R4SUD_STORAGE_MOUNT}" '$2 == m && ($3 == "ext4" || $3 == "f2fs") && $1 != "overlayfs:/overlay" && $1 != "/dev/fitrw" { found=1 } END { exit !found }' /proc/mounts \
 		&& [ -f "${R4SUD_STORAGE_MARKER}" ]
 }
 
 r4sud_storage_refuse() {
-	local msg="dockerd bloque: monter le NVMe sur /srv puis utiliser r4sud-container-storage-enable --confirm"
+	local msg="dockerd bloque: /srv doit etre un stockage persistant ext4 ou f2fs valide avec son marqueur"
 	logger -t "dockerd-init" -p err "${msg}"
 	echo "${msg}" >&2
 	return 1

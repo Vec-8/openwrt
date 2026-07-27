@@ -3,14 +3,16 @@ set -eu
 
 if [ "${1:-}" != "--confirm" ]; then
 	echo "Usage: r4sud-container-storage-enable --confirm" >&2
-	echo "Prerequis: NVMe formate explicitement en ext4 et monte sur /srv par UUID." >&2
+	echo "Prerequis: stockage persistant distinct monte sur /srv (ext4 ou f2fs)." >&2
 	exit 2
 fi
 
 entry="$(awk '$2 == "/srv" { print $1 " " $3; exit }' /proc/mounts)"
 [ -n "$entry" ] || { echo "Refus: /srv n'est pas un montage distinct." >&2; exit 1; }
+source="${entry%% *}"
+case "$source" in overlayfs:/overlay|/dev/fitrw) echo "Refus: /srv pointe sur le systeme racine." >&2; exit 1 ;; esac
 fs="${entry#* }"
-[ "$fs" = "ext4" ] || { echo "Refus: /srv doit etre en ext4 (actuel: $fs)." >&2; exit 1; }
+case "$fs" in ext4|f2fs) ;; *) echo "Refus: /srv doit etre en ext4 ou f2fs (actuel: $fs)." >&2; exit 1 ;; esac
 
 mkdir -p /srv/docker
 mkdir -p /srv/homeassistant/homeassistant/config

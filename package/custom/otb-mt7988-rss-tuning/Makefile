@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-mt7988-rss-tuning
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=OTB
@@ -29,6 +29,10 @@ endef
 define Package/otb-mt7988-rss-tuning/install
 	$(INSTALL_DIR) $(1)/usr/libexec/platform
 	$(INSTALL_BIN) ./files/packet-steering.sh $(1)/usr/libexec/platform/packet-steering.sh
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/etc/init.d/otb-mt7988-rss $(1)/etc/init.d/otb-mt7988-rss
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/etc/uci-defaults/96-otb-mt7988-rss $(1)/etc/uci-defaults/96-otb-mt7988-rss
 endef
 
 $(eval $(call BuildPackage,otb-mt7988-rss-tuning))

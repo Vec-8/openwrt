@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=r4sud-ha-policy
-PKG_VERSION:=1.0.1
-PKG_RELEASE:=21
+PKG_VERSION:=1.1.0
+PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKGARCH:=all
 
@@ -14,7 +14,7 @@ define Package/r4sud-ha-policy
   TITLE:=OTB R4 Sud safe Home Assistant container prerequisites
   DEPENDS:=@TARGET_mediatek_filogic \
     +docker +dockerd +docker-compose +kmod-ipvlan \
-    +kmod-nvme +nvme-cli +smartmontools +block-mount +kmod-fs-ext4 \
+    +block-mount +kmod-fs-ext4 +kmod-fs-f2fs +f2fs-tools \
     +e2fsprogs +resize2fs +tune2fs +e2freefrag \
     +lsblk +blkid +blockdev +mount-utils +fdisk +parted \
     +bash +ca-bundle +ca-certificates +curl +wget-ssl +jq +gzip \
@@ -22,9 +22,9 @@ define Package/r4sud-ha-policy
 endef
 
 define Package/r4sud-ha-policy/description
- Installs the container and NVMe prerequisites for Home Assistant on R4 Sud,
- while keeping dockerd disabled and unable to start until a distinct ext4
- filesystem is mounted on /srv and explicitly confirmed by the administrator.
+ Installs the container prerequisites for Home Assistant on R4 Sud. Dockerd
+ starts only when /srv is a distinct persistent filesystem and the explicit
+ storage-ready marker exists; a valid existing ext4 or f2fs /srv is supported.
  It never creates or changes network, bridge, VLAN or firewall configuration.
 endef
 

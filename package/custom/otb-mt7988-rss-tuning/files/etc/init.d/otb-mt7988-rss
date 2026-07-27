@@ -1,0 +1,5 @@
+#!/bin/sh /etc/rc.common
+START=95
+STOP=05
+start() { /usr/libexec/platform/packet-steering.sh; }
+reload() { start; }
