@@ -1,0 +1,136 @@
+#!/bin/sh
+
+TAG=otb-mt7988-hwlro
+STATE=/tmp/otb-mt7988-hwlro.state
+
+log() {
+	logger -t "$TAG" -- "$*"
+}
+
+board_setup() {
+	board="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
+	case "$board" in
+		bananapi,bpi-r4)
+			expected_ip=10.0.10.1
+			expected_slaves="sfp-lan sfp-wan"
+			hw_devs="sfp-lan sfp-wan"
+			;;
+		bananapi,bpi-r4-pro-8x)
+			expected_ip=10.0.10.254
+			expected_slaves="mxl_lan5 eth1"
+			# mxl_lan5 is a DSA user port whose MT7988 conduit is eth2.
+			hw_devs="eth2 eth1"
+			;;
+		*)
+			return 1
+			;;
+	esac
+	return 0
+}
+
+has_management_ip() {
+	ip -4 -o addr show scope global 2>/dev/null |
+		awk -v ip="$expected_ip" '$4 ~ ("^" ip "/") { found=1 } END { exit !found }'
+}
+
+validate_path() {
+	[ -r /sys/class/net/bond-trunk/bonding/slaves ] || return 1
+	slaves=" $(cat /sys/class/net/bond-trunk/bonding/slaves 2>/dev/null) "
+	for dev in $expected_slaves; do
+		case "$slaves" in
+			*" $dev "*) ;;
+			*) return 1 ;;
+		esac
+	done
+	for dev in $hw_devs; do
+		[ -d "/sys/class/net/$dev" ] || return 1
+	done
+	return 0
+}
+
+disable_all() {
+	board_setup || return 0
+	for dev in $hw_devs; do
+		[ -d "/sys/class/net/$dev" ] || continue
+		ethtool -N "$dev" delete 0 >/dev/null 2>&1 || true
+		ethtool -K "$dev" lro off >/dev/null 2>&1 || true
+	done
+	rm -f "$STATE"
+}
+
+apply_all() {
+	force=0
+	[ "$1" = "--force" ] && force=1
+	board_setup || {
+		log "carte non prise en charge; aucune modification"
+		return 1
+	}
+	if [ "$force" -ne 1 ] && [ "$(uci -q get otb_hwlro.core.enabled)" != "1" ]; then
+		return 0
+	fi
+	has_management_ip || {
+		log "adresse de gestion attendue $expected_ip absente; HW-LRO non active"
+		return 1
+	}
+	validate_path || {
+		log "chemin bond-trunk inattendu ou incomplet; HW-LRO non active"
+		return 1
+	}
+
+	# Program the per-MAC software rules first. The driver rebuilds and
+	# deduplicates the single global MT7988 destination-IP table.
+	for dev in $hw_devs; do
+		ethtool -N "$dev" delete 0 >/dev/null 2>&1 || true
+		if ! ethtool -N "$dev" flow-type tcp4 dst-ip "$expected_ip" action 0 loc 0; then
+			log "echec programmation TCPv4 sur $dev; retour arriere"
+			disable_all
+			return 1
+		fi
+	done
+
+	for dev in $hw_devs; do
+		if ! ethtool -K "$dev" lro on; then
+			log "echec activation LRO sur $dev; retour arriere"
+			disable_all
+			return 1
+		fi
+	done
+
+	{
+		printf 'board=%s\n' "$board"
+		printf 'ip=%s\n' "$expected_ip"
+		printf 'devices=%s\n' "$hw_devs"
+	} > "$STATE"
+	log "HW-LRO actif pour $expected_ip sur $hw_devs"
+	return 0
+}
+
+show_status() {
+	board_setup || return 1
+	printf 'board=%s expected_ip=%s devices=%s\n' "$board" "$expected_ip" "$hw_devs"
+	for dev in $hw_devs; do
+		printf '\n[%s]\n' "$dev"
+		ethtool -k "$dev" 2>/dev/null | grep -E '^(rx-lro|large-receive-offload):' || true
+		ethtool -n "$dev" rule 0 2>/dev/null || true
+	done
+	[ -r "$STATE" ] && {
+		printf '\n[state]\n'
+		cat "$STATE"
+	}
+}
+
+case "$1" in
+	apply)
+		apply_all "$2"
+		;;
+	disable)
+		disable_all
+		;;
+	status)
+		show_status
+		;;
+	*)
+		echo "Usage: $0 {apply [--force]|disable|status}" >&2
+		exit 2
+		;;
+esac

@@ -5,8 +5,8 @@ Backport the upstream v8 MT7988 HW-LRO work, with review fixes:
 - preserve page_pool on normal/RSS rings;
 - use the MT7988 LRO timer register at 0x6c00;
 - keep IRQ group 0 deterministic and route rings 5..7 explicitly;
-- use per-MAC deterministic DIP slots and safe rule replacement;
-- preserve rules across LRO feature toggles;
+- rebuild the global DIP table from deduplicated per-netdev rules;
+- preserve rules across LRO feature toggles and hardware re-init;
 - avoid the global MTU reduction and redundant napi_synchronize().
 
 Signed-off-by: OTB V5 Build <root@localhost>
@@ -59,7 +59,15 @@ Signed-off-by: OTB V5 Build <root@localhost>
  		struct page_pool *pp;
  
  		pp = mtk_create_page_pool(eth, &ring->xdp_q, ring_no,
-@@ -3195,9 +3202,10 @@
+@@ -3191,13 +3198,18 @@
+ 		ring->page_pool = NULL;
+ 	}
+ }
++
++static int
++mtk_hwlro_sync_ipaddr(struct mtk_eth *eth, struct net_device *override_dev,
++		      bool override_enabled);
+ 
  static int mtk_hwlro_rx_init(struct mtk_eth *eth)
  {
  	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
@@ -71,7 +79,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  
  	/* set LRO rings to auto-learn modes */
  	ring_ctrl_dw2 |= MTK_RING_AUTO_LERAN_MODE;
-@@ -3216,39 +3224,92 @@
+@@ -3216,56 +3228,109 @@
  	ring_ctrl_dw2 |= MTK_RING_MAX_AGG_CNT_L;
  	ring_ctrl_dw3 |= MTK_RING_MAX_AGG_CNT_H;
  
@@ -146,7 +154,8 @@ Signed-off-by: OTB V5 Build <root@localhost>
 -	mtk_w32(eth, lro_ctrl_dw0, MTK_PDMA_LRO_CTRL_DW0);
 +	mtk_w32(eth, lro_ctrl_dw3, MTK_PDMA_LRO_CTRL_DW3(reg_map));
 +	mtk_w32(eth, lro_ctrl_dw0, MTK_PDMA_LRO_CTRL_DW0(reg_map));
-+
+ 
+-	return 0;
 +	if (mtk_is_netsys_v2_or_greater(eth)) {
 +		/*
 +		 * On NETSYS v3, physical LRO ring 4 remains in the default
@@ -173,10 +182,10 @@ Signed-off-by: OTB V5 Build <root@localhost>
 +					     MTK_HW_LRO_RING(eth, i + 2)),
 +			reg_map->pdma.int_grp3);
 +	}
- 
- 	return 0;
++
++	return mtk_hwlro_sync_ipaddr(eth, NULL, false);
  }
-@@ -3256,16 +3317,16 @@
+ 
  static void mtk_hwlro_rx_uninit(struct mtk_eth *eth)
  {
  	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
@@ -197,7 +206,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  			msleep(20);
  			continue;
  		}
-@@ -3273,27 +3334,29 @@
+@@ -3273,27 +3338,29 @@
  	}
  
  	/* invalidate lro rings */
@@ -235,7 +244,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  }
  
  static void mtk_hwlro_inval_ipaddr(struct mtk_eth *eth, int idx)
-@@ -3301,12 +3364,13 @@
+@@ -3301,12 +3368,13 @@
  	const struct mtk_reg_map *reg_map = eth->soc->reg_map;
  	u32 reg_val;
  
@@ -252,42 +261,77 @@ Signed-off-by: OTB V5 Build <root@localhost>
  }
  
  static int mtk_hwlro_get_ip_cnt(struct mtk_mac *mac)
-@@ -3322,6 +3386,30 @@
- 	return cnt;
- }
+@@ -3320,6 +3388,62 @@
+ 	}
  
-+static int mtk_hwlro_ipaddr_idx(struct mtk_mac *mac, unsigned int location)
-+{
-+	struct mtk_eth *eth = mac->hw;
-+	int idx;
-+
-+	/*
-+	 * Keep two deterministic slots per MAC. NETSYS v3 numbers the four
-+	 * DIP entries 1..4; older generations use the legacy zero-based map.
-+	 * This avoids leaking global DIP slots when a rule is replaced.
-+	 */
-+	idx = mac->id * MTK_MAX_LRO_IP_CNT + location;
-+	if (mtk_is_netsys_v3_or_greater(eth))
-+		idx++;
-+
-+	if (mtk_is_netsys_v3_or_greater(eth)) {
-+		if (idx > MTK_HW_LRO_DIP_NUM(eth))
-+			return -ENOSPC;
-+	} else if (idx >= MTK_HW_LRO_DIP_NUM(eth)) {
-+		return -ENOSPC;
-+	}
-+
-+	return idx;
+ 	return cnt;
 +}
 +
++static int
++mtk_hwlro_sync_ipaddr(struct mtk_eth *eth, struct net_device *override_dev,
++		      bool override_enabled)
++{
++	u32 ipaddr[MTK_MAX_RX_RING_NUM] = {};
++	int first, count = 0;
++	int i, j, k;
++
++	/*
++	 * The DIP table is global to the frame engine, not per MAC. Rebuild
++	 * it from the rules of all LRO-enabled netdevs, deduplicating an IP
++	 * used on several MACs. This avoids stale entries and slot leaks.
++	 */
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		struct net_device *dev = eth->netdev[i];
++		struct mtk_mac *mac;
++		bool enabled;
++
++		if (!dev)
++			continue;
++
++		enabled = !!(dev->features & NETIF_F_LRO);
++		if (dev == override_dev)
++			enabled = override_enabled;
++		if (!enabled)
++			continue;
++
++		mac = netdev_priv(dev);
++		for (j = 0; j < MTK_MAX_LRO_IP_CNT; j++) {
++			u32 ip = mac->hwlro_ip[j];
++
++			if (!ip)
++				continue;
++
++			for (k = 0; k < count; k++)
++				if (ipaddr[k] == ip)
++					break;
++			if (k != count)
++				continue;
++
++			if (count >= MTK_HW_LRO_DIP_NUM(eth))
++				return -ENOSPC;
++			ipaddr[count++] = ip;
++		}
++	}
++
++	first = mtk_is_netsys_v3_or_greater(eth) ? 1 : 0;
++	for (i = 0; i < MTK_HW_LRO_DIP_NUM(eth); i++)
++		mtk_hwlro_inval_ipaddr(eth, first + i);
++
++	for (i = 0; i < count; i++)
++		mtk_hwlro_val_ipaddr(eth, first + i, ipaddr[i]);
++
++	return 0;
+ }
+ 
  static int mtk_hwlro_add_ipaddr(struct net_device *dev,
- 				struct ethtool_rxnfc *cmd)
- {
-@@ -3330,18 +3418,23 @@
+@@ -3329,19 +3453,27 @@
+ 		(struct ethtool_rx_flow_spec *)&cmd->fs;
  	struct mtk_mac *mac = netdev_priv(dev);
  	struct mtk_eth *eth = mac->hw;
- 	int hwlro_idx;
+-	int hwlro_idx;
++	u32 old_ip;
 +	u32 ip4dst;
++	int err;
  
  	if ((fsp->flow_type != TCP_V4_FLOW) ||
  	    (!fsp->h_u.tcp_ip4_spec.ip4dst) ||
@@ -296,24 +340,28 @@ Signed-off-by: OTB V5 Build <root@localhost>
  
 -	mac->hwlro_ip[fsp->location] = htonl(fsp->h_u.tcp_ip4_spec.ip4dst);
 -	hwlro_idx = (mac->id * MTK_MAX_LRO_IP_CNT) + fsp->location;
+-
 +	ip4dst = ntohl(fsp->h_u.tcp_ip4_spec.ip4dst);
-+	hwlro_idx = mtk_hwlro_ipaddr_idx(mac, fsp->location);
-+	if (hwlro_idx < 0)
-+		return hwlro_idx;
- 
++	old_ip = mac->hwlro_ip[fsp->location];
 +	mac->hwlro_ip[fsp->location] = ip4dst;
  	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
  
 -	mtk_hwlro_val_ipaddr(eth, hwlro_idx, mac->hwlro_ip[fsp->location]);
-+	if (dev->features & NETIF_F_LRO)
-+		mtk_hwlro_val_ipaddr(eth, hwlro_idx, ip4dst);
++	err = mtk_hwlro_sync_ipaddr(eth, NULL, false);
++	if (err) {
++		mac->hwlro_ip[fsp->location] = old_ip;
++		mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
++		mtk_hwlro_sync_ipaddr(eth, NULL, false);
++		return err;
++	}
  
  	return 0;
  }
-@@ -3354,20 +3447,46 @@
+@@ -3353,35 +3485,34 @@
+ 		(struct ethtool_rx_flow_spec *)&cmd->fs;
  	struct mtk_mac *mac = netdev_priv(dev);
  	struct mtk_eth *eth = mac->hw;
- 	int hwlro_idx;
+-	int hwlro_idx;
 +	u32 ip4dst;
  
  	if (fsp->location > 1)
@@ -325,63 +373,41 @@ Signed-off-by: OTB V5 Build <root@localhost>
 +	if (!ip4dst)
 +		return -ENOENT;
  
--	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
-+	hwlro_idx = mtk_hwlro_ipaddr_idx(mac, fsp->location);
-+	if (hwlro_idx < 0)
-+		return hwlro_idx;
++	mac->hwlro_ip[fsp->location] = 0;
+ 	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
++	mtk_hwlro_sync_ipaddr(eth, NULL, false);
  
 -	mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
-+	if (dev->features & NETIF_F_LRO)
-+		mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
- 
-+	mac->hwlro_ip[fsp->location] = 0;
-+	mac->hwlro_ip_cnt = mtk_hwlro_get_ip_cnt(mac);
-+
+-
  	return 0;
  }
  
-+static void mtk_hwlro_netdev_enable(struct net_device *dev)
++static int mtk_hwlro_netdev_enable(struct net_device *dev)
 +{
 +	struct mtk_mac *mac = netdev_priv(dev);
-+	struct mtk_eth *eth = mac->hw;
-+	int i, hwlro_idx;
 +
-+	for (i = 0; i < MTK_MAX_LRO_IP_CNT; i++) {
-+		if (mac->hwlro_ip[i] == 0)
-+			continue;
-+
-+		hwlro_idx = mtk_hwlro_ipaddr_idx(mac, i);
-+		if (hwlro_idx < 0)
-+			continue;
-+
-+		mtk_hwlro_val_ipaddr(eth, hwlro_idx, mac->hwlro_ip[i]);
-+	}
++	return mtk_hwlro_sync_ipaddr(mac->hw, dev, true);
 +}
 +
  static void mtk_hwlro_netdev_disable(struct net_device *dev)
  {
  	struct mtk_mac *mac = netdev_priv(dev);
-@@ -3375,13 +3494,15 @@
- 	int i, hwlro_idx;
+-	struct mtk_eth *eth = mac->hw;
+-	int i, hwlro_idx;
  
- 	for (i = 0; i < MTK_MAX_LRO_IP_CNT; i++) {
+-	for (i = 0; i < MTK_MAX_LRO_IP_CNT; i++) {
 -		mac->hwlro_ip[i] = 0;
 -		hwlro_idx = (mac->id * MTK_MAX_LRO_IP_CNT) + i;
-+		if (mac->hwlro_ip[i] == 0)
-+			continue;
- 
-+		hwlro_idx = mtk_hwlro_ipaddr_idx(mac, i);
-+		if (hwlro_idx < 0)
-+			continue;
-+
- 		mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
- 	}
+-
+-		mtk_hwlro_inval_ipaddr(eth, hwlro_idx);
+-	}
 -
 -	mac->hwlro_ip_cnt = 0;
++	mtk_hwlro_sync_ipaddr(mac->hw, dev, false);
  }
  
  static int mtk_hwlro_get_fdir_entry(struct net_device *dev,
-@@ -3396,15 +3517,15 @@
+@@ -3396,15 +3527,15 @@
  
  	/* only tcp dst ipv4 is meaningful, others are meaningless */
  	fsp->flow_type = TCP_V4_FLOW;
@@ -401,7 +427,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  	fsp->h_u.tcp_ip4_spec.tos = 0;
  	fsp->m_u.tcp_ip4_spec.tos = 0xff;
  
-@@ -3466,10 +3587,12 @@
+@@ -3466,10 +3597,12 @@
  
  	if (BIT(soc->rx.desc_shift) == sizeof(struct mtk_rx_dma)) {
  		/* Set RSS rings to PSE modes */
@@ -417,16 +443,16 @@ Signed-off-by: OTB V5 Build <root@localhost>
  		}
  
  		/* Enable non-lro multiple rx */
-@@ -3562,6 +3685,8 @@
+@@ -3562,6 +3695,8 @@
  
  	if ((diff & NETIF_F_LRO) && !(features & NETIF_F_LRO))
  		mtk_hwlro_netdev_disable(dev);
 +	else if ((diff & NETIF_F_LRO) && (features & NETIF_F_LRO))
-+		mtk_hwlro_netdev_enable(dev);
++		return mtk_hwlro_netdev_enable(dev);
  
  	return 0;
  }
-@@ -3619,8 +3744,8 @@
+@@ -3619,8 +3754,8 @@
  		return err;
  
  	if (eth->hwlro) {
@@ -437,7 +463,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  			if (err)
  				return err;
  		}
-@@ -3682,8 +3807,8 @@
+@@ -3682,8 +3817,8 @@
  
  	if (eth->hwlro) {
  		mtk_hwlro_rx_uninit(eth);
@@ -448,7 +474,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  	}
  
  	if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
-@@ -3880,16 +4005,21 @@
+@@ -3880,14 +4015,19 @@
  		}
  		mtk_w32(eth, val, reg_map->qdma.glo_cfg);
  
@@ -464,17 +490,15 @@ Signed-off-by: OTB V5 Build <root@localhost>
  		mtk_w32(eth, MTK_TX_WB_DDONE | MTK_TX_DMA_EN | MTK_RX_DMA_EN |
  			MTK_MULTI_EN | MTK_PDMA_SIZE_8DWORDS,
  			reg_map->pdma.glo_cfg);
- 	}
- 
++	}
++
 +	if (eth->hwlro && mtk_is_netsys_v3_or_greater(eth)) {
 +		val = mtk_r32(eth, reg_map->pdma.glo_cfg);
 +		mtk_w32(eth, val | MTK_RX_DMA_LRO_EN, reg_map->pdma.glo_cfg);
-+	}
-+
- 	return 0;
- }
+ 	}
  
-@@ -4097,6 +4227,15 @@
+ 	return 0;
+@@ -4097,6 +4237,15 @@
  			}
  		}
  
@@ -490,7 +514,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  		refcount_set(&eth->dma_refcnt, 1);
  	} else {
  		refcount_inc(&eth->dma_refcnt);
-@@ -4192,6 +4331,16 @@
+@@ -4192,6 +4341,16 @@
  		}
  	}
  
@@ -507,7 +531,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  	cancel_work_sync(&eth->rx_dim.work);
  	cancel_work_sync(&eth->tx_dim.work);
  
-@@ -4650,6 +4799,14 @@
+@@ -4650,6 +4809,14 @@
  		}
  	}
  
@@ -522,7 +546,7 @@ Signed-off-by: OTB V5 Build <root@localhost>
  	return 0;
  }
  
-@@ -5844,6 +6001,7 @@
+@@ -5844,6 +6011,7 @@
  {
  	struct resource *res = NULL;
  	struct device_node *mac_np;
@@ -530,10 +554,14 @@ Signed-off-by: OTB V5 Build <root@localhost>
  	struct mtk_eth *eth;
  	char *irqname;
  	int err, i;
-@@ -6092,6 +6250,23 @@
- 						goto err_free_dev;
- 				}
- 			}
+@@ -6088,6 +6256,23 @@
+ 							       mtk_handle_irq_rx, IRQF_SHARED,
+ 							       irqname,
+ 							       &eth->rx_napi[MTK_RSS_RING(i)]);
++					if (err)
++						goto err_free_dev;
++				}
++			}
 +
 +			if (eth->hwlro) {
 +				for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
@@ -547,28 +575,24 @@ Signed-off-by: OTB V5 Build <root@localhost>
 +							       mtk_handle_irq_rx, IRQF_SHARED,
 +							       irqname,
 +							       &eth->rx_napi[lro_ring]);
-+					if (err)
-+						goto err_free_dev;
-+				}
-+			}
- 		} else {
- 			irqname = devm_kasprintf(eth->dev, GFP_KERNEL, "%s RX",
- 						 dev_name(eth->dev));
-@@ -6168,6 +6343,13 @@
+ 					if (err)
+ 						goto err_free_dev;
+ 				}
+@@ -6166,6 +6351,13 @@
+ 			netif_napi_add_weight(eth->dummy_dev,
+ 					      &eth->rx_napi[MTK_RSS_RING(i)].napi,
  					      mtk_napi_rx, MTK_NAPI_WEIGHT);
- 	}
- 
++	}
++
 +	if (eth->hwlro) {
 +		for (i = 0; i < MTK_HW_LRO_RING_NUM(eth); i++) {
 +			netif_napi_add(eth->dummy_dev, &eth->rx_napi[MTK_HW_LRO_RING(eth, i)].napi,
 +				       mtk_napi_rx);
 +		}
-+	}
-+
+ 	}
+ 
  	platform_set_drvdata(pdev, eth);
- 	schedule_delayed_work(&eth->reset.monitor_work,
- 			      MTK_DMA_MONITOR_TIMEOUT);
-@@ -6215,7 +6397,13 @@
+@@ -6215,7 +6407,13 @@
  	if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
  		for (i = 1; i < MTK_RX_RSS_NUM; i++)
  			netif_napi_del(&eth->rx_napi[MTK_RSS_RING(i)].napi);

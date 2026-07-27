@@ -1,0 +1,17 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+start() {
+	/usr/libexec/otb-mt7988-hwlro apply
+}
+
+stop() {
+	/usr/libexec/otb-mt7988-hwlro disable
+}
+
+reload() {
+	stop
+	start
+}
