@@ -1,0 +1,103 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+TAG=otb-cpufreq
+
+load_policy() {
+	config_load otb-cpufreq
+	config_get_bool enabled main enabled 1
+	config_get governor main governor schedutil
+	config_get min_freq main min_freq 800000
+	config_get boost_max main boost_max_freq 1800000
+	config_get thermal_high main thermal_high 70000
+	config_get thermal_low main thermal_low 65000
+	config_get thermal_cap main thermal_cap_freq 1500000
+	config_get emergency_high main emergency_high 85000
+	config_get emergency_low main emergency_low 78000
+	config_get emergency_cap main emergency_cap_freq 1100000
+	config_get interval main interval 5
+}
+
+apply_limit() {
+	local requested_max="$1" policy available selected applied=0
+	for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+		[ -d "$policy" ] || continue
+		available="$(cat "$policy/scaling_available_governors" 2>/dev/null)"
+		selected="$governor"
+		case " $available " in
+			*" $selected "*) ;;
+			*" schedutil "*) selected=schedutil ;;
+			*" ondemand "*) selected=ondemand ;;
+			*) logger -t "$TAG" "aucun gouverneur dynamique disponible pour $policy"; continue ;;
+		esac
+
+		# Réduire d'abord le minimum permet aussi l'application d'un plafond bas.
+		echo "$min_freq" > "$policy/scaling_min_freq" || continue
+		echo "$requested_max" > "$policy/scaling_max_freq" || continue
+		echo "$selected" > "$policy/scaling_governor" || continue
+		applied=$((applied + 1))
+	done
+	[ "$applied" -gt 0 ]
+}
+
+apply_state() {
+	local new_state="$1" max
+	case "$new_state" in
+		normal) max="$boost_max" ;;
+		thermal) max="$thermal_cap" ;;
+		emergency) max="$emergency_cap" ;;
+		*) return 1 ;;
+	esac
+	if apply_limit "$max"; then
+		logger -t "$TAG" "etat=$new_state min=${min_freq}kHz max=${max}kHz gouverneur=$governor temperature=${temp}mC"
+		state="$new_state"
+	fi
+}
+
+load_policy
+[ "$enabled" -eq 1 ] || exit 0
+case "$interval" in ''|*[!0-9]*) interval=5 ;; esac
+[ "$interval" -ge 1 ] 2>/dev/null || interval=5
+
+state=unknown
+while :; do
+	temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
+	case "$temp" in ''|*[!0-9]*) temp=0 ;; esac
+
+	case "$state" in
+		unknown)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -ge "$thermal_high" ]; then
+				apply_state thermal
+			else
+				apply_state normal
+			fi
+			;;
+		normal)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -ge "$thermal_high" ]; then
+				apply_state thermal
+			fi
+			;;
+		thermal)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -le "$thermal_low" ]; then
+				apply_state normal
+			fi
+			;;
+		emergency)
+			if [ "$temp" -le "$emergency_low" ]; then
+				if [ "$temp" -le "$thermal_low" ]; then
+					apply_state normal
+				else
+					apply_state thermal
+				fi
+			fi
+			;;
+	esac
+	sleep "$interval"
+done
