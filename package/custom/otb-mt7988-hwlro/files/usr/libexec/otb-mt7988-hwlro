@@ -77,8 +77,11 @@ apply_all() {
 		return 1
 	}
 
-	# Program the per-MAC software rules first. The driver rebuilds and
-	# deduplicates the single global MT7988 destination-IP table.
+	# Program the per-MAC software rules. The OTB driver rebuilds and
+	# deduplicates the single global MT7988 destination-IP table even when
+	# a bond/bridge upper has correctly disabled generic NETIF_F_LRO.
+	# Only this exact local TCP/IPv4 destination is aggregated; forwarded
+	# and unmatched traffic remains on the normal RSS rings.
 	for dev in $hw_devs; do
 		ethtool -N "$dev" delete 0 >/dev/null 2>&1 || true
 		if ! ethtool -N "$dev" flow-type tcp4 dst-ip "$expected_ip" action 0 loc 0; then
@@ -89,8 +92,13 @@ apply_all() {
 	done
 
 	for dev in $hw_devs; do
-		if ! ethtool -K "$dev" lro on; then
-			log "echec activation LRO sur $dev; retour arriere"
+		rule="$(ethtool -n "$dev" rule 0 2>/dev/null)" || {
+			log "regle TCPv4 illisible sur $dev; retour arriere"
+			disable_all
+			return 1
+		}
+		if ! printf '%s\n' "$rule" | grep -F "$expected_ip" >/dev/null; then
+			log "regle TCPv4 incorrecte sur $dev; retour arriere"
 			disable_all
 			return 1
 		fi
@@ -100,8 +108,9 @@ apply_all() {
 		printf 'board=%s\n' "$board"
 		printf 'ip=%s\n' "$expected_ip"
 		printf 'devices=%s\n' "$hw_devs"
+		printf 'mode=filtered-exact-dip-below-upper\n'
 	} > "$STATE"
-	log "HW-LRO actif pour $expected_ip sur $hw_devs"
+	log "HW-LRO filtre actif pour $expected_ip sur $hw_devs"
 	return 0
 }
 

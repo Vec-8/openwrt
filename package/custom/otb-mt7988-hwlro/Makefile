@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-mt7988-hwlro
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_VERSION:=1.1.0
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -19,7 +19,7 @@ endef
 define Package/otb-mt7988-hwlro/description
  Installs a guarded and reversible MT7988 hardware-LRO setup for the OTB
  2x10G LACP paths. It never changes UCI network, VLAN, bridge, bond, firewall
- or wireless configuration. The probe image ships it disabled until the driver
+ or wireless configuration. Exact-DIP filtered mode remains disabled until it
  has been validated manually on the R4 Sud.
 endef
 

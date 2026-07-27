@@ -1,0 +1,49 @@
+From: OTB V5 Build <root@localhost>
+Subject: [PATCH] net: ethernet: mediatek: keep exact-DIP HW LRO below uppers
+
+Linux deliberately clears NETIF_F_LRO on a lower device when a bond or a
+bridge above it does not advertise LRO.  This is the correct behaviour for
+generic LRO because an arbitrary aggregated packet must not be forwarded.
+
+The MediaTek HW-LRO implementation is different when an RX classifier rule
+has been explicitly installed: hardware only aggregates TCP/IPv4 packets
+whose destination address exactly matches a programmed DIP.  Keep these
+explicit rules in the global MT7988 DIP table even when NETIF_F_LRO has been
+cleared by a bond or bridge.  Unmatched and forwarded traffic remains on the
+normal RSS rings, and no rule means that HW-LRO remains inactive.
+
+This makes filtered HW-LRO usable for traffic terminated locally on a
+bridged 802.3ad interface without enabling unsafe generic LRO on the bridge
+or its bond.
+
+Signed-off-by: OTB V5 Build <root@localhost>
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -3425,15 +3425,24 @@ mtk_hwlro_sync_ipaddr(struct mtk_eth *eth, struct net_device *override_dev,
+ 
+ 		if (!dev)
+ 			continue;
+ 
++		mac = netdev_priv(dev);
+ 		enabled = !!(dev->features & NETIF_F_LRO);
+ 		if (dev == override_dev)
+ 			enabled = override_enabled;
+-		if (!enabled)
++
++		/*
++		 * A bond or bridge upper clears NETIF_F_LRO recursively.
++		 * Explicit HW classifier rules are exact TCP/IPv4 destination
++		 * matches, so they remain safe for locally terminated traffic:
++		 * unmatched traffic, including forwarded traffic, stays on the
++		 * normal RSS rings.  A rule is therefore also an explicit
++		 * opt-in to filtered HW-LRO below an upper device.
++		 */
++		if (!enabled && !mac->hwlro_ip_cnt)
+ 			continue;
+ 
+-		mac = netdev_priv(dev);
+ 		for (j = 0; j < MTK_MAX_LRO_IP_CNT; j++) {
+ 			u32 ip = mac->hwlro_ip[j];
+ 
+ 			if (!ip)
