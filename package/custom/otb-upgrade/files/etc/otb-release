@@ -6,13 +6,13 @@ fi
 case "${BOARD_NAME:-}" in
 	bananapi,bpi-r4-pro-8x)
 		OTB_DEVICE='r4pro'
-		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-hwlro-rss-v5-filtered-dip-toggle-luci-fr-20260727'
-		OTB_SEQUENCE='2026072723'
+		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-candidate-luci-fr-20260727'
+		OTB_SEQUENCE='2026072724'
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-hwlro-rss-v5-filtered-dip-toggle-luci-fr-20260727'
-		OTB_SEQUENCE='2026072723'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-candidate-luci-fr-20260727'
+		OTB_SEQUENCE='2026072724'
 		;;
 	*)
 		OTB_DEVICE='unsupported'

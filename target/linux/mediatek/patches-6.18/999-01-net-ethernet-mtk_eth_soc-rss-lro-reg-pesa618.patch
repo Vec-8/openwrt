@@ -1,23 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 188c7f308958b39e7895a640c65e1c72315d9b03 Mon Sep 17 00:00:00 2001
 From: Mason Chang <mason-cw.chang@mediatek.com>
 Date: Tue, 18 Mar 2025 14:09:26 +0800
-Subject: [PATCH 1/3] net: ethernet: mtk_eth_soc: Add register definitions for
- RSS and LRO
+Subject: [PATCH] net: ethernet: mtk_eth_soc: add register definitions for rss
+ and lro
 
-Add definitions for Receive Side Scaling and Large Receive Offload support.
-
-Signed-off-by: Mason Chang <mason-cw.chang@mediatek.com>
-Signed-off-by: Frank Wunderlich <frank-w@public-files.de>
 ---
  drivers/net/ethernet/mediatek/mtk_eth_soc.c | 23 +++++++++++++++
- drivers/net/ethernet/mediatek/mtk_eth_soc.h | 32 +++++++++++++++------
- 2 files changed, 46 insertions(+), 9 deletions(-)
+ drivers/net/ethernet/mediatek/mtk_eth_soc.h | 32 ++++++++++++++-------
+ 2 files changed, 45 insertions(+), 10 deletions(-)
 
-diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-index 57b8006a3b5d..aaef09ed4839 100644
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -61,13 +61,18 @@ static const struct mtk_reg_map mtk_reg_map = {
+@@ -61,13 +61,18 @@ static const struct mtk_reg_map mtk_reg_
  		.rx_ptr		= 0x0900,
  		.rx_cnt_cfg	= 0x0904,
  		.pcrx_ptr	= 0x0908,
@@ -36,7 +30,7 @@ index 57b8006a3b5d..aaef09ed4839 100644
  	},
  	.qdma = {
  		.qtx_cfg	= 0x1800,
-@@ -125,6 +130,7 @@ static const struct mtk_reg_map mt7986_reg_map = {
+@@ -125,6 +130,7 @@ static const struct mtk_reg_map mt7986_r
  	.tx_irq_mask		= 0x461c,
  	.tx_irq_status		= 0x4618,
  	.pdma = {
@@ -44,7 +38,7 @@ index 57b8006a3b5d..aaef09ed4839 100644
  		.rx_ptr		= 0x4100,
  		.rx_cnt_cfg	= 0x4104,
  		.pcrx_ptr	= 0x4108,
-@@ -135,6 +141,12 @@ static const struct mtk_reg_map mt7986_reg_map = {
+@@ -135,6 +141,12 @@ static const struct mtk_reg_map mt7986_r
  		.irq_mask	= 0x4228,
  		.adma_rx_dbg0	= 0x4238,
  		.int_grp	= 0x4250,
@@ -57,7 +51,7 @@ index 57b8006a3b5d..aaef09ed4839 100644
  	},
  	.qdma = {
  		.qtx_cfg	= 0x4400,
-@@ -183,10 +195,21 @@ static const struct mtk_reg_map mt7988_reg_map = {
+@@ -183,10 +195,21 @@ static const struct mtk_reg_map mt7988_r
  		.glo_cfg	= 0x6a04,
  		.rst_idx	= 0x6a08,
  		.delay_irq	= 0x6a0c,
@@ -79,11 +73,9 @@ index 57b8006a3b5d..aaef09ed4839 100644
  	},
  	.qdma = {
  		.qtx_cfg	= 0x4400,
-diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.h b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-index 5a5bc6101bdc..f73a586dac1c 100644
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
-@@ -1226,16 +1226,30 @@ struct mtk_reg_map {
+@@ -1226,16 +1226,29 @@ struct mtk_reg_map {
  	u32	tx_irq_mask;
  	u32	tx_irq_status;
  	struct {
@@ -119,7 +111,6 @@ index 5a5bc6101bdc..f73a586dac1c 100644
 +		u32	lro_alt_dbg;		/* lro auto-learn debug */
 +		u32	lro_alt_dbg_data;	/* lro auto-learn debug data */
 +		u32	rss_glo_cfg;		/* rss global configuration */
-+
  	} pdma;
  	struct {
  		u32	qtx_cfg;	/* tx queue configuration */

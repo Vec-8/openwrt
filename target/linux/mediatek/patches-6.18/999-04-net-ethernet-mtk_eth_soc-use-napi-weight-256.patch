@@ -1,13 +1,8 @@
 From: OTB <otb@local>
 Subject: [PATCH] net: ethernet: mediatek: use NAPI poll weight 256
 
-The MT7988 RSS path services four RX rings with threaded NAPI. The default
-weight of 64 leaves the packet path CPU-bound well below 10 Gbit/s under
-parallel streams. Restore the MediaTek/OpenWrt RSS setting previously validated
-on the same BPI-R4 hardware: a weight of 256 for TX and all RX NAPI instances.
-
-This changes only the poll budget. It does not alter RX buffer size, DSA, RSS
-hashing, network configuration or Wi-Fi.
+Increase the poll budget for TX and all MT7988 RSS RX NAPI instances.
+This does not alter networking configuration, RSS hashing or Wi-Fi.
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
@@ -21,10 +16,9 @@ hashing, network configuration or Wi-Fi.
  #define MTK_DMA_DUMMY_DESC	0xffffffff
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -6156,13 +6156,16 @@
+@@ -6175,13 +6175,16 @@ static int mtk_probe(struct platform_dev
+ 		goto err_unreg_netdev;
  	}
- 	eth->dummy_dev->threaded = 1;
- 	strcpy(eth->dummy_dev->name, "mtk_eth");
 -	netif_napi_add(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
 -	netif_napi_add(eth->dummy_dev, &eth->rx_napi[0].napi, mtk_napi_rx);
 +	netif_napi_add_weight(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx,
@@ -35,7 +29,7 @@ hashing, network configuration or Wi-Fi.
  	if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
  		for (i = 1; i < MTK_RX_RSS_NUM; i++)
 -			netif_napi_add(eth->dummy_dev, &eth->rx_napi[MTK_RSS_RING(i)].napi,
--				       mtk_napi_rx);
+-					   mtk_napi_rx);
 +			netif_napi_add_weight(eth->dummy_dev,
 +					      &eth->rx_napi[MTK_RSS_RING(i)].napi,
 +					      mtk_napi_rx, MTK_NAPI_WEIGHT);
