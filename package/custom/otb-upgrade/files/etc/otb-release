@@ -7,8 +7,8 @@ case "${BOARD_NAME:-}" in
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-safe-mt76-hostapd-20260709-mlo-power-probe-reset-guard-ha-safe-20260727'
-		OTB_SEQUENCE='2026072712'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-rss-hwlro-hardened-mt76-hostapd-20260709-mlo-power-probe-reset-guard-ha-safe-20260727'
+		OTB_SEQUENCE='2026072713'
 		;;
 	*)
 		OTB_DEVICE='unsupported'
