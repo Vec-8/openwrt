@@ -60,7 +60,7 @@ check_iface() {
 }
 
 check_radio() {
-	local section="$1" band_expected="$2" htmode_expected="$3"
+	local section="$1" band_expected="$2" htmode_expected="$3" txpower_expected="$4"
 	local band htmode country txpower
 	config_get band "$section" band ""
 	config_get htmode "$section" htmode ""
@@ -69,7 +69,7 @@ check_radio() {
 	[ "$band" = "$band_expected" ] && report OK "$section.band" "$band" "$band_expected" || report ERREUR "$section.band" "${band:-absent}" "$band_expected"
 	[ "$htmode" = "$htmode_expected" ] && report OK "$section.htmode" "$htmode" "$htmode_expected" || report ERREUR "$section.htmode" "${htmode:-absent}" "$htmode_expected"
 	[ "$country" = FR ] && report OK "$section.country" "$country" FR || report ERREUR "$section.country" "${country:-absent}" FR
-	[ "$txpower" = 27 ] && report OK "$section.txpower_configured" "$txpower" 27 || report ERREUR "$section.txpower_configured" "${txpower:-absent}" 27
+	[ "$txpower" = "$txpower_expected" ] && report OK "$section.txpower_configured" "$txpower" "$txpower_expected" || report ERREUR "$section.txpower_configured" "${txpower:-absent}" "$txpower_expected"
 }
 
 echo "BOARD=$board"
@@ -78,9 +78,9 @@ echo "HARDWARE=one-BE14-card-two-PCIe-functions"
 echo "REQUIREMENT=three-MLO-groups-plus-Home-2G"
 
 config_load wireless
-check_radio radio0 2g EHT40
-check_radio radio1 5g EHT160
-check_radio radio2 6g EHT320
+check_radio radio0 2g EHT40 27
+check_radio radio1 5g EHT160 27
+check_radio radio2 6g EHT320 25
 check_iface cahier_main_mlo 1 "radio0 radio1 radio2"
 check_iface cahier_guest_mlo 1 "radio0 radio1 radio2"
 check_iface cahier_home5g_mlo 1 "radio0 radio1"

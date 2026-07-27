@@ -17,10 +17,10 @@ Exigences :
 * Home-2G : BSS 2,4 GHz hors MLO ;
 * EHT40 / EHT160 / EHT320 ;
 * pays FR ;
-* consigne commune de 27 dBm pour le wiphy MLO.
+* consignes UCI conservees du cahier : 27 dBm en 2,4 GHz, 27 dBm en 5 GHz et 25 dBm en 6 GHz.
 
-La consigne commune de 27 dBm ne contourne pas la reglementation. Le noyau et
-la base reglementaire FR limitent ensuite chaque lien a son maximum autorise
+Ces consignes ne contournent pas la reglementation. Le noyau et la base
+reglementaire FR limitent ensuite chaque lien a son maximum autorise
 (20 dBm en 2,4 GHz, 26 dBm sur le canal 100 en 5 GHz et 23 dBm en 6 GHz dans la
 configuration actuelle).
 
