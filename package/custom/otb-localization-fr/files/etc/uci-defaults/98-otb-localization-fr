@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Force only the LuCI display language. All existing network, wireless,
+# firewall, theme and service settings remain untouched.
+uci -q set luci.main.lang='fr'
+uci -q commit luci
+
+exit 0
