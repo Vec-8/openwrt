@@ -114,8 +114,31 @@ apply_all() {
 	return 0
 }
 
+set_persistent_enabled() {
+	value="$1"
+	uci -q set otb_hwlro.core.enabled="$value" || return 1
+	uci -q commit otb_hwlro || return 1
+}
+
+enable_persistent() {
+	set_persistent_enabled 1 || return 1
+	if ! apply_all --force; then
+		set_persistent_enabled 0
+		disable_all
+		return 1
+	fi
+}
+
+disable_persistent() {
+	set_persistent_enabled 0 || return 1
+	disable_all
+}
+
 show_status() {
 	board_setup || return 1
+	configured="$(uci -q get otb_hwlro.core.enabled)"
+	[ "$configured" = 1 ] || configured=0
+	printf 'configured_enabled=%s\n' "$configured"
 	printf 'board=%s expected_ip=%s devices=%s\n' "$board" "$expected_ip" "$hw_devs"
 	for dev in $hw_devs; do
 		printf '\n[%s]\n' "$dev"
@@ -132,14 +155,20 @@ case "$1" in
 	apply)
 		apply_all "$2"
 		;;
+	enable)
+		enable_persistent
+		;;
 	disable)
+		disable_persistent
+		;;
+	runtime-disable)
 		disable_all
 		;;
 	status)
 		show_status
 		;;
 	*)
-		echo "Usage: $0 {apply [--force]|disable|status}" >&2
+		echo "Usage: $0 {apply [--force]|enable|disable|runtime-disable|status}" >&2
 		exit 2
 		;;
 esac

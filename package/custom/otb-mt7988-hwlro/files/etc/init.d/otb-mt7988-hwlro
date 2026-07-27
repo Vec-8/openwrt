@@ -8,7 +8,7 @@ start() {
 }
 
 stop() {
-	/usr/libexec/otb-mt7988-hwlro disable
+	/usr/libexec/otb-mt7988-hwlro runtime-disable
 }
 
 reload() {

@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# Trois commandes administrateur explicites, non publiques et sans arguments.
+for section in otb_hwlro_status otb_hwlro_enable otb_hwlro_disable; do
+	uci -q delete luci.$section
+done
+
+uci set luci.otb_hwlro_status='command'
+uci set luci.otb_hwlro_status.name='État du HW-LRO OTB'
+uci set luci.otb_hwlro_status.description='Affiche la configuration persistante, les filtres actifs et les interfaces concernées.'
+uci set luci.otb_hwlro_status.command='/usr/libexec/otb-mt7988-hwlro status'
+uci set luci.otb_hwlro_status.param='0'
+uci set luci.otb_hwlro_status.public='0'
+
+uci set luci.otb_hwlro_enable='command'
+uci set luci.otb_hwlro_enable.name='Activer durablement le HW-LRO OTB'
+uci set luci.otb_hwlro_enable.description='Active le filtre exact vers l’adresse locale et conserve ce choix après redémarrage.'
+uci set luci.otb_hwlro_enable.command='/usr/libexec/otb-mt7988-hwlro enable'
+uci set luci.otb_hwlro_enable.param='0'
+uci set luci.otb_hwlro_enable.public='0'
+
+uci set luci.otb_hwlro_disable='command'
+uci set luci.otb_hwlro_disable.name='Désactiver durablement le HW-LRO OTB'
+uci set luci.otb_hwlro_disable.description='Supprime immédiatement les filtres et interdit leur réactivation automatique.'
+uci set luci.otb_hwlro_disable.command='/usr/libexec/otb-mt7988-hwlro disable'
+uci set luci.otb_hwlro_disable.param='0'
+uci set luci.otb_hwlro_disable.public='0'
+
+uci commit luci
+exit 0

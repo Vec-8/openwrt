@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-mt7988-hwlro
-PKG_VERSION:=1.1.0
-PKG_RELEASE:=2
+PKG_VERSION:=1.2.0
+PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -13,7 +13,7 @@ define Package/otb-mt7988-hwlro
   SECTION:=net
   CATEGORY:=Network
   TITLE:=OTB guarded MT7988 hardware LRO setup
-  DEPENDS:=@TARGET_mediatek_filogic +ethtool-full
+  DEPENDS:=@TARGET_mediatek_filogic +ethtool-full +luci-app-commands
 endef
 
 define Package/otb-mt7988-hwlro/description
@@ -37,6 +37,8 @@ define Package/otb-mt7988-hwlro/install
 	$(INSTALL_BIN) ./files/etc/init.d/otb-mt7988-hwlro $(1)/etc/init.d/otb-mt7988-hwlro
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/99-otb-mt7988-hwlro $(1)/etc/hotplug.d/iface/99-otb-mt7988-hwlro
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/etc/uci-defaults/97-otb-mt7988-hwlro-luci $(1)/etc/uci-defaults/97-otb-mt7988-hwlro-luci
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/usr/libexec/otb-mt7988-hwlro $(1)/usr/libexec/otb-mt7988-hwlro
 endef
