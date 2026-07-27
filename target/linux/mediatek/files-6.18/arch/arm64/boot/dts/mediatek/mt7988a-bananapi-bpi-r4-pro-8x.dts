@@ -527,12 +527,46 @@
 			#size-cells = <0>;
 			reg = <3>;
 
-			wifi_eeprom: eeprom@51 {
+			/*
+			 * The BE14 is one physical card exposed through two PCIe
+			 * functions. Its two small I2C EEPROMs carry the stable MAC
+			 * addresses. Keep those separate from the radio calibration
+			 * blob supplied below by the official OpenWrt data set.
+			 */
+			wifi_eeprom_5g: eeprom@51 {
 				compatible = "atmel,24c02";
 				reg = <0x51>;
 				address-bits = <8>;
 				page-size = <8>;
 				size = <256>;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					wifi_5g_mac: mac-address@0 {
+						reg = <0x0 0x6>;
+					};
+				};
+			};
+
+			wifi_eeprom_6g: eeprom@52 {
+				compatible = "atmel,24c02";
+				reg = <0x52>;
+				address-bits = <8>;
+				page-size = <8>;
+				size = <256>;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					wifi_6g_mac: mac-address@0 {
+						reg = <0x0 0x6>;
+					};
+				};
 			};
 		};
 	};
@@ -544,6 +578,18 @@
 	pinctrl-0 = <&pcie0_pins>;
 	status = "okay";
 
+	pcie@0,0 {
+		reg = <0x0000 0 0 0 0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+
+		wifi@0,0 {
+			compatible = "mediatek,mt76";
+			reg = <0x0000 0 0 0 0>;
+			nvmem-cell-names = "mac-address";
+			nvmem-cells = <&wifi_5g_mac>;
+		};
+	};
 };
 
 /* mPCIe SIM3 */
@@ -551,6 +597,19 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pcie1_pins>;
 	status = "okay";
+
+	pcie@0,0 {
+		reg = <0x0000 0 0 0 0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+
+		wifi@0,0 {
+			compatible = "mediatek,mt76";
+			reg = <0x0000 0 0 0 0>;
+			nvmem-cell-names = "mac-address";
+			nvmem-cells = <&wifi_6g_mac>;
+		};
+	};
 };
 
 /* M.2 key-B SIM1 */
@@ -787,3 +846,9 @@
 &lvts {
 	status = "okay";
 };
+
+/*
+ * Full known-good BE14 calibration from the official OpenWrt overlay.
+ * cfg80211 still enforces the FR regulatory domain and its EIRP limits.
+ */
+#include "mt7988a-bananapi-bpi-r4-pro-8x-be14-calibration.dtsi"
