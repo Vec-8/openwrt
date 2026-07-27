@@ -530,8 +530,9 @@
 			/*
 			 * The BE14 is one physical card exposed through two PCIe
 			 * functions. Its two small I2C EEPROMs carry the stable MAC
-			 * addresses. Keep those separate from the radio calibration
-			 * blob supplied below by the official OpenWrt data set.
+			 * addresses. Keep the card-specific radio EEPROM/EFUSE
+			 * calibration; mt76 only fills zero-valued TX-power fields
+			 * from the matching MT7990 default firmware.
 			 */
 			wifi_eeprom_5g: eeprom@51 {
 				compatible = "atmel,24c02";
@@ -848,7 +849,7 @@
 };
 
 /*
- * Full known-good BE14 calibration from the official OpenWrt overlay.
- * cfg80211 still enforces the FR regulatory domain and its EIRP limits.
+ * Do not inject the generic BPI-R4 BE14 EEPROM overlay here.
+ * Keep the R4 Pro card-specific EEPROM/EFUSE calibration; mt76 only
+ * fills zero-valued TX-power fields from the MT7990 default firmware.
  */
-#include "mt7988a-bananapi-bpi-r4-pro-8x-be14-calibration.dtsi"
