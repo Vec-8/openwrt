@@ -737,6 +737,12 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS := mt7988a-bananapi-bpi-r4
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4
   $(call Device/bananapi_bpi-r4-common)
+  # OTB R4 Sud: preserve the module-specific EEPROM/MAC/MLO data.  The
+  # generic BE14 overlay contains a full EEPROM dump from another card; the
+  # mt76 zero-field fix supplies only missing TX-power fields instead.
+  DEVICE_DTS_OVERLAY := mt7988a-bananapi-bpi-r4-emmc \
+	mt7988a-bananapi-bpi-r4-rtc \
+	mt7988a-bananapi-bpi-r4-sd
   DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-mt7988-rss-tuning otb-mt7988-hwlro \
 	-openvpn-openssl -openvpn-easy-rsa -luci-proto-openvpn \
 	-mwan3 -luci-app-mwan3 -pbr -luci-app-pbr \
