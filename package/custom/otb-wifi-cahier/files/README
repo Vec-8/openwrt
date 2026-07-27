@@ -17,7 +17,7 @@ Exigences :
 * Home-2G : BSS 2,4 GHz hors MLO ;
 * EHT40 / EHT160 / EHT320 ;
 * pays FR ;
-* consignes UCI conservees du cahier : 27 dBm en 2,4 GHz, 27 dBm en 5 GHz et 25 dBm en 6 GHz.
+* consigne UCI live conservee : 27 dBm sur radio0, radio1 et radio2.
 
 Ces consignes ne contournent pas la reglementation. Le noyau et la base
 reglementaire FR limitent ensuite chaque lien a son maximum autorise

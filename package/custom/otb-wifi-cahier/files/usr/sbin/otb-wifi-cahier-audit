@@ -80,7 +80,7 @@ echo "REQUIREMENT=three-MLO-groups-plus-Home-2G"
 config_load wireless
 check_radio radio0 2g EHT40 27
 check_radio radio1 5g EHT160 27
-check_radio radio2 6g EHT320 25
+check_radio radio2 6g EHT320 27
 check_iface cahier_main_mlo 1 "radio0 radio1 radio2"
 check_iface cahier_guest_mlo 1 "radio0 radio1 radio2"
 check_iface cahier_home5g_mlo 1 "radio0 radio1"
