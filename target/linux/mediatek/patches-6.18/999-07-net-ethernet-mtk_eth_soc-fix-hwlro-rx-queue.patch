@@ -1,0 +1,60 @@
+From: OTB <otb@local>
+Date: Tue, 28 Jul 2026 13:30:00 +0200
+Subject: [PATCH] net: ethernet: mtk_eth_soc: fix HW LRO RX queue index
+
+NETSYS v3 uses physical PDMA rings 4 through 7 for HW LRO while the
+network devices expose four logical RSS queues numbered 0 through 3.
+Recording the physical ring number in the skb makes get_rps_cpu() reject
+LRO packets with an out-of-range queue index and emit a warning.
+
+Translate the NETSYS v3 HW LRO ring range to the corresponding logical
+queue range before recording it in the skb. Also report the four HW LRO
+rings to ethtool instead of the size of the physical ring array. This
+matches the MediaTek 6.6 HW LRO implementation and keeps ethtool's ring
+count consistent with real_num_rx_queues.
+
+Signed-off-by: OTB <otb@local>
+---
+ drivers/net/ethernet/mediatek/mtk_eth_soc.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/mediatek/mtk_eth_soc.c b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -2420,6 +2420,18 @@ out:
+ 	return act;
+ }
+ 
++static u16 mtk_rx_queue_index(struct mtk_eth *eth,
++			      const struct mtk_rx_ring *ring)
++{
++	u32 first_lro_ring = MTK_HW_LRO_RING(eth, 0);
++
++	if (ring->ring_no >= first_lro_ring &&
++	    ring->ring_no < first_lro_ring + MTK_HW_LRO_RING_NUM(eth))
++		return ring->ring_no - first_lro_ring;
++
++	return ring->ring_no;
++}
++
+ static int mtk_poll_rx(struct napi_struct *napi, int budget,
+ 		       struct mtk_eth *eth)
+ {
+@@ -2609,7 +2621,7 @@ static int mtk_poll_rx(struct napi_struc
+ 		if (reason == MTK_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
+ 			mtk_ppe_check_skb(eth->ppe[ppe_idx], skb, hash);
+ 
+-		skb_record_rx_queue(skb, ring->ring_no);
++		skb_record_rx_queue(skb, mtk_rx_queue_index(eth, ring));
+ 		napi_gro_receive(napi, skb);
+ 
+ skip_rx:
+@@ -5425,7 +5437,7 @@ static int mtk_get_rxnfc(struct net_devi
+ 	switch (cmd->cmd) {
+ 	case ETHTOOL_GRXRINGS:
+ 		if (dev->hw_features & NETIF_F_LRO) {
+-			cmd->data = MTK_MAX_RX_RING_NUM;
++			cmd->data = MTK_HW_LRO_RING_NUM(eth);
+ 			ret = 0;
+ 		} else if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
+ 			cmd->data = MTK_RX_RSS_NUM;
