@@ -1,0 +1,3 @@
+config fan 'thermal'
+	option medium_temp '60000'
+	option high_temp '68000'
