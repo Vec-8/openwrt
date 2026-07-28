@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-fan-curve
 PKG_VERSION:=1.1.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -18,9 +18,9 @@ endef
 
 define Package/otb-fan-curve/description
  Applies guarded board-specific pwm-fan trip points on the supported BPI-R4
- and BPI-R4 Pro boards. The less efficiently ventilated BPI-R4 Sud uses
- earlier 55/65 degree Celsius thresholds. Stopping the service restores the
- original OpenWrt trip points.
+ and BPI-R4 Pro boards. Both boards intentionally use the same 60/68 degree
+ Celsius thresholds. Stopping the service restores the original OpenWrt trip
+ points.
 endef
 
 define Package/otb-fan-curve/conffiles

@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-cpufreq-policy
 PKG_VERSION:=1.2.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -17,9 +17,9 @@ endef
 
 define Package/otb-cpufreq-policy/description
  Uses the kernel schedutil governor to scale MT7988 CPUs between 800 MHz and
- 1.8 GHz according to load, with board-specific thermal caps. The less
- efficiently ventilated BPI-R4 Sud is capped earlier and can fall back to
- 800 MHz above 75 degrees Celsius.
+ 1.8 GHz according to load. The BPI-R4 and BPI-R4 Pro intentionally share
+ the same 70/65 degree Celsius thermal cap and 85/78 degree Celsius emergency
+ cap profile.
 endef
 
 define Package/otb-cpufreq-policy/conffiles
