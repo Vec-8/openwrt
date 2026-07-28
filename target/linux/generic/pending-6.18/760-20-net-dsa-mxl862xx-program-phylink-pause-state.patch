@@ -11,6 +11,8 @@ structure back. Keep half-duplex links with pause disabled.
 
 This change intentionally does not alter QoS/WRED thresholds. Those remain
 subject to a separate, reversible hardware validation on the BPI-R4 Pro.
+
+Signed-off-by: OTB local build <noreply@localhost>
 ---
 --- a/drivers/net/dsa/mxl862xx/mxl862xx-cmd.h
 +++ b/drivers/net/dsa/mxl862xx/mxl862xx-cmd.h
