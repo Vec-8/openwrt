@@ -8,6 +8,10 @@ start() {
 }
 
 stop() {
+	# Un paquet non armé doit rester strictement inerte.
+	[ -e /tmp/otb-mxl-flowctrl.state ] ||
+		[ "$(uci -q get otb_mxl_flowctrl.core.enabled)" = "1" ] ||
+		return 0
 	# Le retour au mode automatique reste un effort de sécurité au shutdown.
 	# Il ne doit toutefois jamais bloquer l'arrêt si le lien est déjà tombé.
 	/usr/libexec/otb-mxl-flowctrl runtime-disable >/dev/null 2>&1 || true
