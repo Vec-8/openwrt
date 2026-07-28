@@ -310,6 +310,7 @@
 				fixed-link {
 					speed = <10000>;
 					full-duplex;
+					pause;
 				};
 			};
 
