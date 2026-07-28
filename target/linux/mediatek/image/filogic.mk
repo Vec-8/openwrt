@@ -777,7 +777,7 @@ define Device/bananapi_bpi-r4-pro-8x
 	kmod-mt7996-233-firmware kmod-rtc-pcf8563 kmod-sfp \
 	kmod-dsa-mxl862xx kmod-phy-aeonsemi-as21xxx kmod-usb3 \
 	e2fsprogs f2fsck mkf2fs mt7988-wo-firmware \
-	r4pro-bonding-early bridger otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mxl-flowctrl otb-mt7988-rss-tuning otb-mt7988-hwlro
+	r4pro-bonding-early bridger otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mt7988-rss-tuning otb-mt7988-hwlro
   SUPPORTED_DEVICES += bananapi,bpi-r4-pro-8x
   IMAGES := sysupgrade.itb
   KERNEL_LOADADDR := 0x46000000
