@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=r4sud-ha-policy
 PKG_VERSION:=1.1.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=GPL-2.0-only
 PKGARCH:=all
 

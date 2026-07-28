@@ -6,13 +6,13 @@ fi
 case "${BOARD_NAME:-}" in
 	bananapi,bpi-r4-pro-8x)
 		OTB_DEVICE='r4pro'
-		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-shared-no-mxl-pause-luci-fr-20260728'
-		OTB_SEQUENCE='2026072830'
+		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-r2-rpsf-rfs0-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-shared-no-mxl-pause-luci-fr-20260729'
+		OTB_SEQUENCE='2026072932'
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-aligned-pro-luci-fr-20260728'
-		OTB_SEQUENCE='2026072828'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-r2-rpsf-rfs0-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-aligned-pro-ha-luci-fr-20260729'
+		OTB_SEQUENCE='2026072931'
 		;;
 	*)
 		OTB_DEVICE='unsupported'
