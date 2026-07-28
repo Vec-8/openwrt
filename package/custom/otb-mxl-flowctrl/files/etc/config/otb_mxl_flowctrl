@@ -1,0 +1,5 @@
+config core 'core'
+	# Deux verrous sont requis. Ils restent fermés avant la validation
+	# matérielle réversible du profil TX PAUSE.
+	option enabled '0'
+	option validated_profile 'unvalidated'

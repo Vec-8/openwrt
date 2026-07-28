@@ -1,0 +1,266 @@
+#!/bin/sh
+
+export LC_ALL=C
+
+TAG=otb-mxl-flowctrl
+STATE=/tmp/otb-mxl-flowctrl.state
+BOARD_EXPECTED=bananapi,bpi-r4-pro-8x
+IP_EXPECTED=10.0.10.254
+BOND=bond-trunk
+SLAVES_EXPECTED="eth1 mxl_lan5"
+IFACE=mxl_lan5
+DRIVER_MODULE=mxl862xx_dsa
+DRIVER_VERSION_EXPECTED=otb-mxl-flowctrl-v1
+PROFILE_EXPECTED=mxl-lan5-tx-only-v1
+CONFIRM_TOKEN=CONFIRM-R4PRO-MXL-LAN5-TX-PAUSE
+
+log() {
+	logger -t "$TAG" -- "$*"
+}
+
+fail() {
+	log "$*"
+	printf 'ERREUR: %s\n' "$*" >&2
+	return 1
+}
+
+board_name() {
+	cat /tmp/sysinfo/board_name 2>/dev/null
+}
+
+driver_version() {
+	cat "/sys/module/$DRIVER_MODULE/parameters/otb_flowctrl_version" 2>/dev/null
+}
+
+has_management_ip() {
+	ip -4 -o addr show scope global 2>/dev/null |
+		awk -v ip="$IP_EXPECTED" '$4 ~ ("^" ip "/") { found=1 } END { exit !found }'
+}
+
+sorted_words() {
+	printf '%s\n' "$*" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' |
+		sed 's/ $//'
+}
+
+validate_path() {
+	[ "$(board_name)" = "$BOARD_EXPECTED" ] ||
+		fail "carte inattendue; aucune modification" || return 1
+	[ "$(driver_version)" = "$DRIVER_VERSION_EXPECTED" ] ||
+		fail "pilote sans marqueur $DRIVER_VERSION_EXPECTED; aucune modification" || return 1
+	has_management_ip ||
+		fail "adresse de gestion $IP_EXPECTED absente; aucune modification" || return 1
+	[ -d "/sys/class/net/$IFACE" ] ||
+		fail "interface $IFACE absente; aucune modification" || return 1
+	[ -r "/sys/class/net/$BOND/bonding/slaves" ] ||
+		fail "agrégat $BOND absent; aucune modification" || return 1
+
+	slaves="$(cat "/sys/class/net/$BOND/bonding/slaves" 2>/dev/null)"
+	[ "$(sorted_words "$slaves")" = "$(sorted_words "$SLAVES_EXPECTED")" ] ||
+		fail "membres LACP inattendus: $slaves; aucune modification" || return 1
+
+	[ "$(cat "/sys/class/net/$IFACE/speed" 2>/dev/null)" = "10000" ] ||
+		fail "$IFACE ne négocie pas à 10 Gbit/s; aucune modification" || return 1
+	[ "$(cat "/sys/class/net/$IFACE/duplex" 2>/dev/null)" = "full" ] ||
+		fail "$IFACE n'est pas en full duplex; aucune modification" || return 1
+	return 0
+}
+
+read_pause() {
+	pause_output="$(ethtool -a "$IFACE" 2>/dev/null)" || return 1
+	pause_autoneg="$(printf '%s\n' "$pause_output" |
+		awk -F: '/^[[:space:]]*Autonegotiate:/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')"
+	pause_rx="$(printf '%s\n' "$pause_output" |
+		awk -F: '/^[[:space:]]*RX:/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')"
+	pause_tx="$(printf '%s\n' "$pause_output" |
+		awk -F: '/^[[:space:]]*TX:/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')"
+	case "$pause_autoneg:$pause_rx:$pause_tx" in
+		on:on:on|on:on:off|on:off:on|on:off:off|off:on:on|off:on:off|off:off:on|off:off:off)
+			return 0
+			;;
+	esac
+	return 1
+}
+
+verify_pause() {
+	expected_autoneg="$1"
+	expected_rx="$2"
+	expected_tx="$3"
+	i=0
+	while [ "$i" -lt 10 ]; do
+		if read_pause &&
+		   [ "$pause_autoneg" = "$expected_autoneg" ] &&
+		   [ "$pause_rx" = "$expected_rx" ] &&
+		   [ "$pause_tx" = "$expected_tx" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+kernel_pause_error_count() {
+	dmesg 2>/dev/null |
+		grep -F "failed to configure pause on port 13:" |
+		wc -l | tr -d ' '
+}
+
+restore_baseline() {
+	errors_before="$(kernel_pause_error_count)"
+	if ! ethtool -A "$IFACE" autoneg on rx off tx off; then
+		fail "échec de la demande de retour au mode automatique"
+		return 1
+	fi
+	if ! verify_pause on off off; then
+		fail "retour au mode automatique non confirmé"
+		return 1
+	fi
+	errors_after="$(kernel_pause_error_count)"
+	if [ "$errors_after" -gt "$errors_before" ]; then
+		fail "le pilote a signalé un échec matériel pendant le retour arrière"
+		return 1
+	fi
+	rm -f "$STATE"
+	log "mode automatique restaure sur $IFACE"
+	return 0
+}
+
+apply_tx_pause() {
+	validate_path || return 1
+
+	if ! read_pause; then
+		fail "état PAUSE illisible sur $IFACE"
+		return 1
+	fi
+
+	{
+		printf 'previous_autoneg=%s\n' "$pause_autoneg"
+		printf 'previous_rx=%s\n' "$pause_rx"
+		printf 'previous_tx=%s\n' "$pause_tx"
+		printf 'board=%s\n' "$(board_name)"
+		printf 'interface=%s\n' "$IFACE"
+		printf 'profile=%s\n' "$PROFILE_EXPECTED"
+	} >"$STATE"
+
+	errors_before="$(kernel_pause_error_count)"
+	if ! ethtool -A "$IFACE" autoneg off rx off tx on; then
+		fail "échec de la demande TX PAUSE; retour arrière"
+		restore_baseline || true
+		return 1
+	fi
+
+	if ! verify_pause off off on; then
+		fail "TX PAUSE non confirmé; retour arrière"
+		restore_baseline || true
+		return 1
+	fi
+
+	errors_after="$(kernel_pause_error_count)"
+	if [ "$errors_after" -gt "$errors_before" ]; then
+		fail "le pilote a signalé un échec matériel; retour arrière"
+		restore_baseline || true
+		return 1
+	fi
+
+	if [ "$(cat "/sys/class/net/$IFACE/carrier" 2>/dev/null)" != "1" ]; then
+		fail "porteuse perdue après activation; retour arrière"
+		restore_baseline || true
+		return 1
+	fi
+
+	log "TX PAUSE actif sur $IFACE"
+	return 0
+}
+
+profile_is_armed() {
+	[ "$(uci -q get otb_mxl_flowctrl.core.enabled)" = "1" ] &&
+	[ "$(uci -q get otb_mxl_flowctrl.core.validated_profile)" = "$PROFILE_EXPECTED" ]
+}
+
+apply_persistent() {
+	profile_is_armed || return 0
+	apply_tx_pause
+}
+
+enable_runtime() {
+	[ "$1" = "$CONFIRM_TOKEN" ] ||
+		fail "jeton de confirmation absent ou incorrect" || return 1
+	apply_tx_pause
+}
+
+enable_persistent() {
+	[ "$1" = "$CONFIRM_TOKEN" ] ||
+		fail "jeton de confirmation absent ou incorrect" || return 1
+	validate_path || return 1
+
+	uci -q set otb_mxl_flowctrl.core.validated_profile="$PROFILE_EXPECTED" || return 1
+	uci -q set otb_mxl_flowctrl.core.enabled='1' || return 1
+	uci -q commit otb_mxl_flowctrl || return 1
+
+	if ! apply_tx_pause; then
+		uci -q set otb_mxl_flowctrl.core.enabled='0'
+		uci -q set otb_mxl_flowctrl.core.validated_profile='unvalidated'
+		uci -q commit otb_mxl_flowctrl
+		restore_baseline || true
+		return 1
+	fi
+	return 0
+}
+
+disable_persistent() {
+	uci -q set otb_mxl_flowctrl.core.enabled='0' || return 1
+	uci -q commit otb_mxl_flowctrl || return 1
+	validate_path || return 1
+	restore_baseline
+}
+
+show_status() {
+	printf 'configured_enabled=%s\n' "$(uci -q get otb_mxl_flowctrl.core.enabled || echo 0)"
+	printf 'validated_profile=%s\n' "$(uci -q get otb_mxl_flowctrl.core.validated_profile || echo absent)"
+	printf 'expected_profile=%s\n' "$PROFILE_EXPECTED"
+	printf 'board=%s\n' "$(board_name)"
+	printf 'expected_board=%s\n' "$BOARD_EXPECTED"
+	printf 'driver_module=%s\n' "$DRIVER_MODULE"
+	printf 'driver_version=%s\n' "$(driver_version || echo absent)"
+	printf 'expected_driver_version=%s\n' "$DRIVER_VERSION_EXPECTED"
+	printf 'management_ip=%s\n' "$IP_EXPECTED"
+	printf 'bond=%s\n' "$BOND"
+	printf 'bond_slaves=%s\n' "$(cat "/sys/class/net/$BOND/bonding/slaves" 2>/dev/null || echo absent)"
+	printf 'expected_slaves=%s\n' "$SLAVES_EXPECTED"
+	printf 'interface=%s\n' "$IFACE"
+	printf 'speed=%s\n' "$(cat "/sys/class/net/$IFACE/speed" 2>/dev/null || echo absent)"
+	printf 'duplex=%s\n' "$(cat "/sys/class/net/$IFACE/duplex" 2>/dev/null || echo absent)"
+	printf 'carrier=%s\n' "$(cat "/sys/class/net/$IFACE/carrier" 2>/dev/null || echo absent)"
+	printf '\n[pause]\n'
+	ethtool -a "$IFACE" 2>&1 || true
+	if [ -r "$STATE" ]; then
+		printf '\n[runtime_state]\n'
+		cat "$STATE"
+	fi
+}
+
+case "$1" in
+	apply)
+		apply_persistent
+		;;
+	runtime-enable)
+		enable_runtime "$2"
+		;;
+	runtime-disable)
+		validate_path || exit 1
+		restore_baseline
+		;;
+	enable)
+		enable_persistent "$2"
+		;;
+	disable)
+		disable_persistent
+		;;
+	status)
+		show_status
+		;;
+	*)
+		echo "Usage: $0 {apply|runtime-enable TOKEN|runtime-disable|enable TOKEN|disable|status}" >&2
+		exit 2
+		;;
+esac

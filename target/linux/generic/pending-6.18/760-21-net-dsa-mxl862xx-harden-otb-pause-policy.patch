@@ -1,0 +1,54 @@
+From: OTB local build <noreply@localhost>
+Subject: [PATCH] net: dsa: mxl862xx: harden OTB pause programming
+
+Keep the MxL firmware AUTO flow-control policy when phylink requests no
+pause, verify the complete port configuration after each write, and expose
+a module version marker so the userspace guard cannot run against an
+unpatched driver.
+
+The marker is intentionally local to the OTB image and does not change the
+firmware revision.
+
+Signed-off-by: OTB local build <noreply@localhost>
+---
+--- a/drivers/net/dsa/mxl862xx/mxl862xx-phylink.c
++++ b/drivers/net/dsa/mxl862xx/mxl862xx-phylink.c
+@@ -548,7 +548,8 @@
+ 	else if (rx_pause)
+ 		flow_ctrl = MXL862XX_FLOW_RX;
+ 	else
+-		flow_ctrl = MXL862XX_FLOW_OFF;
++		/* Preserve the firmware AUTO baseline when pause is disabled. */
++		flow_ctrl = MXL862XX_FLOW_AUTO;
+ 
+ 	ret = MXL862XX_API_READ(priv, MXL862XX_COMMON_PORTCFGGET, port_cfg);
+ 	if (ret)
+@@ -559,7 +560,19 @@
+ 
+ 	port_cfg.flow_ctrl = cpu_to_le32(flow_ctrl);
+ 
+-	return MXL862XX_API_WRITE(priv, MXL862XX_COMMON_PORTCFGSET, port_cfg);
++	ret = MXL862XX_API_WRITE(priv, MXL862XX_COMMON_PORTCFGSET, port_cfg);
++	if (ret)
++		return ret;
++
++	port_cfg = (struct mxl862xx_port_cfg) {
++		.port_id = cpu_to_le16(port),
++	};
++
++	ret = MXL862XX_API_READ(priv, MXL862XX_COMMON_PORTCFGGET, port_cfg);
++	if (ret)
++		return ret;
++
++	return le32_to_cpu(port_cfg.flow_ctrl) == flow_ctrl ? 0 : -EIO;
+ }
+ 
+ static void mxl862xx_phylink_mac_config(struct phylink_config *config,
+--- a/drivers/net/dsa/mxl862xx/mxl862xx.c
++++ b/drivers/net/dsa/mxl862xx/mxl862xx.c
+@@ -4525,4 +4525,5 @@
+ mdio_module_driver(mxl862xx_driver);
+ 
+ MODULE_DESCRIPTION("Driver for MaxLinear MxL862xx switch family");
++MODULE_VERSION("otb-mxl-flowctrl-v1");
+ MODULE_LICENSE("GPL");
