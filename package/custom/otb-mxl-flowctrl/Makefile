@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-mxl-flowctrl
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -33,8 +33,6 @@ endef
 define Package/otb-mxl-flowctrl/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/otb_mxl_flowctrl $(1)/etc/config/otb_mxl_flowctrl
-	$(INSTALL_DIR) $(1)/etc/otb-mxl-flowctrl
-	$(INSTALL_DATA) ./files/etc/otb-mxl-flowctrl/PROVEN_PROFILE $(1)/etc/otb-mxl-flowctrl/PROVEN_PROFILE
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/otb-mxl-flowctrl $(1)/etc/init.d/otb-mxl-flowctrl
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface

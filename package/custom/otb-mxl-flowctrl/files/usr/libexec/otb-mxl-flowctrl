@@ -12,7 +12,6 @@ IFACE=mxl_lan5
 DRIVER_MODULE=mxl862xx_dsa
 DRIVER_VERSION_EXPECTED=otb-mxl-flowctrl-v1
 PROFILE_EXPECTED=mxl-lan5-tx-only-v1
-PROOF_FILE=/etc/otb-mxl-flowctrl/PROVEN_PROFILE
 CONFIRM_TOKEN=CONFIRM-R4PRO-MXL-LAN5-TX-PAUSE
 
 log() {
@@ -31,20 +30,6 @@ board_name() {
 
 driver_version() {
 	cat "/sys/module/$DRIVER_MODULE/parameters/otb_flowctrl_version" 2>/dev/null
-}
-
-proof_profile() {
-	sed -n '1p' "$PROOF_FILE" 2>/dev/null
-}
-
-proof_is_valid() {
-	[ "$(proof_profile)" = "$PROFILE_EXPECTED" ]
-}
-
-require_proof() {
-	proof_is_valid ||
-		fail "preuve build $PROFILE_EXPECTED absente; aucune modification" ||
-		return 1
 }
 
 has_management_ip() {
@@ -188,30 +173,24 @@ apply_tx_pause() {
 }
 
 profile_is_armed() {
-	proof_is_valid &&
 	[ "$(uci -q get otb_mxl_flowctrl.core.enabled)" = "1" ] &&
 	[ "$(uci -q get otb_mxl_flowctrl.core.validated_profile)" = "$PROFILE_EXPECTED" ]
 }
 
 apply_persistent() {
-	[ "$(uci -q get otb_mxl_flowctrl.core.enabled)" = "1" ] || return 0
-	require_proof || return 1
-	profile_is_armed ||
-		fail "profil UCI armé incohérent; aucune modification" || return 1
+	profile_is_armed || return 0
 	apply_tx_pause
 }
 
 enable_runtime() {
 	[ "$1" = "$CONFIRM_TOKEN" ] ||
 		fail "jeton de confirmation absent ou incorrect" || return 1
-	require_proof || return 1
 	apply_tx_pause
 }
 
 enable_persistent() {
 	[ "$1" = "$CONFIRM_TOKEN" ] ||
 		fail "jeton de confirmation absent ou incorrect" || return 1
-	require_proof || return 1
 	validate_path || return 1
 
 	uci -q set otb_mxl_flowctrl.core.validated_profile="$PROFILE_EXPECTED" || return 1
@@ -239,13 +218,6 @@ show_status() {
 	printf 'configured_enabled=%s\n' "$(uci -q get otb_mxl_flowctrl.core.enabled || echo 0)"
 	printf 'validated_profile=%s\n' "$(uci -q get otb_mxl_flowctrl.core.validated_profile || echo absent)"
 	printf 'expected_profile=%s\n' "$PROFILE_EXPECTED"
-	printf 'proof_file=%s\n' "$PROOF_FILE"
-	printf 'proof_profile=%s\n' "$(proof_profile || echo absent)"
-	if proof_is_valid; then
-		printf 'proof_valid=1\n'
-	else
-		printf 'proof_valid=0\n'
-	fi
 	printf 'board=%s\n' "$(board_name)"
 	printf 'expected_board=%s\n' "$BOARD_EXPECTED"
 	printf 'driver_module=%s\n' "$DRIVER_MODULE"
