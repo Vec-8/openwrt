@@ -17,12 +17,11 @@ config board 'r4pro'
 	option emergency_low '78000'
 	option emergency_cap_freq '1100000'
 
-# Le R4 Sud dissipe directement par son châssis et son ventilateur recycle
-# davantage l'air. Il est donc bridé plus tôt pour viser moins de 70 °C.
+# Le R4 Sud suit exactement le même profil que le R4 Pro.
 config board 'r4sud'
-	option thermal_high '68000'
-	option thermal_low '62000'
-	option thermal_cap_freq '1100000'
-	option emergency_high '75000'
-	option emergency_low '69000'
-	option emergency_cap_freq '800000'
+	option thermal_high '70000'
+	option thermal_low '65000'
+	option thermal_cap_freq '1500000'
+	option emergency_high '85000'
+	option emergency_low '78000'
+	option emergency_cap_freq '1100000'

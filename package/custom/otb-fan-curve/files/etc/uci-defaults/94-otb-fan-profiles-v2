@@ -6,8 +6,8 @@ set otb-fan.r4pro='fan'
 set otb-fan.r4pro.medium_temp='60000'
 set otb-fan.r4pro.high_temp='68000'
 set otb-fan.r4sud='fan'
-set otb-fan.r4sud.medium_temp='55000'
-set otb-fan.r4sud.high_temp='65000'
+set otb-fan.r4sud.medium_temp='60000'
+set otb-fan.r4sud.high_temp='68000'
 commit otb-fan
 EOF
 

@@ -3,7 +3,7 @@
 Courbes ventilateur par carte :
 
 - R4 Pro : ventilation intermédiaire à 60 °C, maximale à 68 °C ;
-- R4 Sud : ventilation intermédiaire à 55 °C, maximale à 65 °C ;
+- R4 Sud : ventilation intermédiaire à 60 °C, maximale à 68 °C, identique au R4 Pro ;
 - refus de s'appliquer sur toute autre carte ;
 - restauration des seuils OpenWrt par la commande `restore` ou à l'arrêt du
   service ;

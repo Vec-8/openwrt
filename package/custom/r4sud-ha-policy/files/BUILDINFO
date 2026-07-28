@@ -1,5 +1,5 @@
-BUILD_ID=r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-cpufreq-fan-v2-luci-fr-20260728
-BUILD_SEQUENCE=2026072827
+BUILD_ID=r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-aligned-pro-luci-fr-20260728
+BUILD_SEQUENCE=2026072828
 OPENWRT_VERSION=SNAPSHOT
 OPENWRT_REVISION=recorded-by-etc-openwrt_release-in-final-image
 KERNEL_VERSION=6.18.39

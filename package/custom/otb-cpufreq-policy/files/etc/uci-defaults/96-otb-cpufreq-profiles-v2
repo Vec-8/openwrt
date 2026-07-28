@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Migration non réseau vers les profils thermiques par carte. Le profil du
-# R4 Sud est volontairement plus conservateur à cause de son refroidissement.
+# R4 Sud est volontairement aligne sur le profil thermique du R4 Pro.
 uci -q batch <<'EOF'
 set otb-cpufreq.main.profile_version='2'
 set otb-cpufreq.r4pro='board'
@@ -12,12 +12,12 @@ set otb-cpufreq.r4pro.emergency_high='85000'
 set otb-cpufreq.r4pro.emergency_low='78000'
 set otb-cpufreq.r4pro.emergency_cap_freq='1100000'
 set otb-cpufreq.r4sud='board'
-set otb-cpufreq.r4sud.thermal_high='68000'
-set otb-cpufreq.r4sud.thermal_low='62000'
-set otb-cpufreq.r4sud.thermal_cap_freq='1100000'
-set otb-cpufreq.r4sud.emergency_high='75000'
-set otb-cpufreq.r4sud.emergency_low='69000'
-set otb-cpufreq.r4sud.emergency_cap_freq='800000'
+set otb-cpufreq.r4sud.thermal_high='70000'
+set otb-cpufreq.r4sud.thermal_low='65000'
+set otb-cpufreq.r4sud.thermal_cap_freq='1500000'
+set otb-cpufreq.r4sud.emergency_high='85000'
+set otb-cpufreq.r4sud.emergency_low='78000'
+set otb-cpufreq.r4sud.emergency_cap_freq='1100000'
 commit otb-cpufreq
 EOF
 

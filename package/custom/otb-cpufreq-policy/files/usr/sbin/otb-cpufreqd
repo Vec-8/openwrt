@@ -28,12 +28,12 @@ load_policy() {
 			;;
 		bananapi,bpi-r4)
 			profile=r4sud
-			thermal_high_default=68000
-			thermal_low_default=62000
-			thermal_cap_default=1100000
-			emergency_high_default=75000
-			emergency_low_default=69000
-			emergency_cap_default=800000
+			thermal_high_default=70000
+			thermal_low_default=65000
+			thermal_cap_default=1500000
+			emergency_high_default=85000
+			emergency_low_default=78000
+			emergency_cap_default=1100000
 			;;
 		*)
 			logger -t "$TAG" "carte non prise en charge: ${board:-inconnue}"
