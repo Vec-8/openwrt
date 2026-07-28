@@ -1,5 +1,0 @@
-#!/bin/sh
-
-[ "$ACTION" = "ifup" ] || exit 0
-[ -x /usr/libexec/otb-mxl-flowctrl ] || exit 0
-/usr/libexec/otb-mxl-flowctrl apply >/dev/null 2>&1
