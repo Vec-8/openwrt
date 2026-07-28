@@ -33,7 +33,17 @@ validated_profile=unvalidated
 ```
 
 L’activation persistante est refusée tant que l’essai matériel réversible
-de 45 secondes n’a pas validé le profil TX PAUSE.
+de 45 secondes n’a pas validé le profil TX PAUSE. Le paquet de préparation
+contient donc :
+
+```text
+/etc/otb-mxl-flowctrl/PROVEN_PROFILE = unvalidated
+```
+
+Le jeton console ne suffit pas : `runtime-enable`, `enable` et le démarrage
+persistant exigent également que ce fichier contienne exactement
+`mxl-lan5-tx-only-v1`. Seul le pipeline de finalisation, après analyse
+symétrique réussie, peut produire cette variante du paquet.
 
 ## Commandes
 
