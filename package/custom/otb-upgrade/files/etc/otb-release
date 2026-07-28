@@ -11,8 +11,8 @@ case "${BOARD_NAME:-}" in
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
-		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-cpufreq-fan-luci-fr-20260728'
-		OTB_SEQUENCE='2026072825'
+		OTB_BUILD_ID='r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-pesa618-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-cpufreq-fan-v2-luci-fr-20260728'
+		OTB_SEQUENCE='2026072827'
 		;;
 	*)
 		OTB_DEVICE='unsupported'
