@@ -1,9 +1,9 @@
 # Paquet `otb-fan-curve`
 
-Courbe ventilateur commune au BPI-R4 Sud et au BPI-R4 Pro :
+Courbes ventilateur par carte :
 
-- ventilation intermédiaire à partir de 60 °C ;
-- ventilation maximale à partir de 68 °C ;
+- R4 Pro : ventilation intermédiaire à 60 °C, maximale à 68 °C ;
+- R4 Sud : ventilation intermédiaire à 55 °C, maximale à 65 °C ;
 - refus de s'appliquer sur toute autre carte ;
 - restauration des seuils OpenWrt par la commande `restore` ou à l'arrêt du
   service ;

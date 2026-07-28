@@ -1,3 +1,7 @@
-config fan 'thermal'
+config fan 'r4pro'
 	option medium_temp '60000'
 	option high_temp '68000'
+
+config fan 'r4sud'
+	option medium_temp '55000'
+	option high_temp '65000'

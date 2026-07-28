@@ -3,6 +3,7 @@
 . /lib/functions.sh
 
 TAG=otb-cpufreq
+STATE_FILE=/tmp/otb-cpufreq.state
 
 load_policy() {
 	config_load otb-cpufreq
@@ -11,13 +12,74 @@ load_policy() {
 	config_get min_freq main min_freq 800000
 	config_get boost_max main boost_max_freq 1800000
 	config_get rate_limit main rate_limit_us 10000
-	config_get thermal_high main thermal_high 70000
-	config_get thermal_low main thermal_low 65000
-	config_get thermal_cap main thermal_cap_freq 1500000
-	config_get emergency_high main emergency_high 85000
-	config_get emergency_low main emergency_low 78000
-	config_get emergency_cap main emergency_cap_freq 1100000
 	config_get interval main interval 5
+
+	board="$(ubus call system board 2>/dev/null |
+		jsonfilter -e '@.board_name')"
+	case "$board" in
+		bananapi,bpi-r4-pro-8x)
+			profile=r4pro
+			thermal_high_default=70000
+			thermal_low_default=65000
+			thermal_cap_default=1500000
+			emergency_high_default=85000
+			emergency_low_default=78000
+			emergency_cap_default=1100000
+			;;
+		bananapi,bpi-r4)
+			profile=r4sud
+			thermal_high_default=68000
+			thermal_low_default=62000
+			thermal_cap_default=1100000
+			emergency_high_default=75000
+			emergency_low_default=69000
+			emergency_cap_default=800000
+			;;
+		*)
+			logger -t "$TAG" "carte non prise en charge: ${board:-inconnue}"
+			return 1
+			;;
+	esac
+
+	# Les sections par carte priment. En leur absence, les valeurs sûres
+	# codées pour la carte s'appliquent immédiatement, même avant migration
+	# du fichier UCI historique.
+	config_get thermal_high "$profile" thermal_high "$thermal_high_default"
+	config_get thermal_low "$profile" thermal_low "$thermal_low_default"
+	config_get thermal_cap "$profile" thermal_cap_freq "$thermal_cap_default"
+	config_get emergency_high "$profile" emergency_high "$emergency_high_default"
+	config_get emergency_low "$profile" emergency_low "$emergency_low_default"
+	config_get emergency_cap "$profile" emergency_cap_freq "$emergency_cap_default"
+}
+
+validate_policy() {
+	local value
+	for value in \
+		"$min_freq" "$boost_max" "$rate_limit" "$interval" \
+		"$thermal_high" "$thermal_low" "$thermal_cap" \
+		"$emergency_high" "$emergency_low" "$emergency_cap"
+	do
+		case "$value" in ''|*[!0-9]*) return 1 ;; esac
+	done
+	[ "$interval" -ge 1 ] &&
+		[ "$min_freq" -le "$emergency_cap" ] &&
+		[ "$emergency_cap" -le "$thermal_cap" ] &&
+		[ "$thermal_cap" -le "$boost_max" ] &&
+		[ "$thermal_low" -lt "$thermal_high" ] &&
+		[ "$thermal_high" -le "$emergency_low" ] &&
+		[ "$emergency_low" -lt "$emergency_high" ]
+}
+
+write_state() {
+	umask 077
+	{
+		printf 'board=%s\n' "$board"
+		printf 'profile=%s\n' "$profile"
+		printf 'state=%s\n' "$state"
+		printf 'temperature_mC=%s\n' "$temp"
+		printf 'min_freq_kHz=%s\n' "$min_freq"
+		printf 'max_freq_kHz=%s\n' "$1"
+	} >"$STATE_FILE"
 }
 
 apply_limit() {
@@ -59,13 +121,16 @@ apply_state() {
 	if apply_limit "$max"; then
 		logger -t "$TAG" "etat=$new_state min=${min_freq}kHz max=${max}kHz gouverneur=$governor temperature=${temp}mC"
 		state="$new_state"
+		write_state "$max"
 	fi
 }
 
-load_policy
+load_policy || exit 1
 [ "$enabled" -eq 1 ] || exit 0
-case "$interval" in ''|*[!0-9]*) interval=5 ;; esac
-[ "$interval" -ge 1 ] 2>/dev/null || interval=5
+if ! validate_policy; then
+	logger -t "$TAG" "politique invalide pour le profil $profile"
+	exit 1
+fi
 
 state=unknown
 sensor_failed=0

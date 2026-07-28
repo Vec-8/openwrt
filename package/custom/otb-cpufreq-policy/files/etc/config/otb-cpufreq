@@ -3,12 +3,26 @@ config policy 'main'
 	option governor 'schedutil'
 	option min_freq '800000'
 	option boost_max_freq '1800000'
+	option profile_version '2'
 	# Délai minimum entre deux changements décidés par schedutil.
 	option rate_limit_us '10000'
+	option interval '5'
+
+# Le R4 Pro dispose d'un refroidissement nettement plus efficace.
+config board 'r4pro'
 	option thermal_high '70000'
 	option thermal_low '65000'
 	option thermal_cap_freq '1500000'
 	option emergency_high '85000'
 	option emergency_low '78000'
 	option emergency_cap_freq '1100000'
-	option interval '5'
+
+# Le R4 Sud dissipe directement par son châssis et son ventilateur recycle
+# davantage l'air. Il est donc bridé plus tôt pour viser moins de 70 °C.
+config board 'r4sud'
+	option thermal_high '68000'
+	option thermal_low '62000'
+	option thermal_cap_freq '1100000'
+	option emergency_high '75000'
+	option emergency_low '69000'
+	option emergency_cap_freq '800000'

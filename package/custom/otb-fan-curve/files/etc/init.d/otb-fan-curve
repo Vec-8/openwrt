@@ -6,14 +6,12 @@ EXTRA_COMMANDS="status restore"
 EXTRA_HELP="        status   Afficher la courbe et l'etat actuel
         restore  Restaurer les seuils OpenWrt jusqu'au prochain demarrage"
 
-MEDIUM_DEFAULT=60000
-HIGH_DEFAULT=68000
 ZONE=/sys/class/thermal/thermal_zone0
 
 load_settings() {
 	config_load otb-fan
-	config_get MEDIUM thermal medium_temp "$MEDIUM_DEFAULT"
-	config_get HIGH thermal high_temp "$HIGH_DEFAULT"
+	config_get MEDIUM "$PROFILE" medium_temp "$MEDIUM_DEFAULT"
+	config_get HIGH "$PROFILE" high_temp "$HIGH_DEFAULT"
 }
 
 select_board() {
@@ -21,12 +19,18 @@ select_board() {
 		jsonfilter -e '@.board_name')"
 	case "$BOARD" in
 		bananapi,bpi-r4-pro-8x)
+			PROFILE=r4pro
+			MEDIUM_DEFAULT=60000
+			HIGH_DEFAULT=68000
 			HIGH_TRIP=1
 			MEDIUM_TRIP=2
 			STOCK_HIGH=117000
 			STOCK_MEDIUM=85000
 			;;
 		bananapi,bpi-r4)
+			PROFILE=r4sud
+			MEDIUM_DEFAULT=55000
+			HIGH_DEFAULT=65000
 			HIGH_TRIP=2
 			MEDIUM_TRIP=3
 			STOCK_HIGH=115000
@@ -43,8 +47,8 @@ select_board() {
 }
 
 apply_curve() {
-	load_settings
 	select_board || return 1
+	load_settings
 	case "$MEDIUM:$HIGH" in
 		*[!0-9:]*|:*|*:)
 			echo "Seuils invalides" >&2
@@ -81,12 +85,13 @@ restore() {
 }
 
 status() {
-	load_settings
 	select_board || return 1
+	load_settings
 	PWM_NAME="$(grep -l '^pwmfan$' /sys/class/hwmon/hwmon*/name \
 		2>/dev/null | head -n1)"
 	PWM_PATH="${PWM_NAME%/name}/pwm1"
 	echo "Carte: $BOARD"
+	echo "Profil: $PROFILE"
 	echo "Temperature: $(cat "$ZONE/temp") mC"
 	echo "Seuil moyen: $(cat "$MEDIUM_PATH") mC (configure: $MEDIUM mC)"
 	echo "Seuil maximum: $(cat "$HIGH_PATH") mC (configure: $HIGH mC)"

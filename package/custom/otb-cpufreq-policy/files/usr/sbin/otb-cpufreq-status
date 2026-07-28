@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [ -r /tmp/otb-cpufreq.state ]; then
+	cat /tmp/otb-cpufreq.state
+else
+	printf 'state=unknown\n'
+fi
 printf 'temperature_mC=%s\n' "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
 for policy in /sys/devices/system/cpu/cpufreq/policy*; do
 	[ -d "$policy" ] || continue
