@@ -10,9 +10,9 @@ case "$board" in
 esac
 [ "$(grep -c '^processor[[:space:]]*:' /proc/cpuinfo 2>/dev/null)" -ge 4 ] || exit 0
 
-# The upstream 6.18 Pesa port exposes detailed labels on the Pro but only the
-# common 15100000.ethernet label on the standard R4. The latter therefore uses
-# its stable GIC SPI numbers as a guarded fallback.
+# Some kernels expose detailed labels, while the OTB 6.18.39 images of both
+# R4 boards only expose 15100000.ethernet. Stable GIC numbers are therefore the
+# guarded fallback on both supported boards.
 set_irq_cpu() {
 	label="$1"
 	gic="$2"
@@ -20,7 +20,7 @@ set_irq_cpu() {
 	irq="$(awk -v label="$label" \
 		'index($0, "15100000.ethernet") && index($0, label) { gsub(":", "", $1); print $1; exit }' \
 		/proc/interrupts)"
-	if [ -z "$irq" ] && [ "$board" = "bananapi,bpi-r4" ] && [ -n "$gic" ]; then
+	if [ -z "$irq" ] && [ -n "$gic" ]; then
 		irq="$(awk -v gic="$gic" \
 			'index($0, "15100000.ethernet") && index($0, "GICv3 " gic " Level") { gsub(":", "", $1); print $1; exit }' \
 			/proc/interrupts)"
@@ -35,11 +35,17 @@ set_irq_cpu 'RSS RX 1' 222 1
 set_irq_cpu 'RSS RX 2' 223 2
 set_irq_cpu 'RSS RX 3' 224 3
 
-# RPS duplicates hardware RSS and can collapse all receive queues onto one CPU.
-for q in /sys/devices/platform/soc/15100000.ethernet/net/*/queues/rx-*/rps_cpus \
-         /sys/devices/platform/soc/15100000.ethernet/net/*/queues/rx-*/rps_flow_cnt; do
-	[ -w "$q" ] && printf '0\n' > "$q"
+# The OTB A/B test on 2026-07-29 confirms that RPS on all four CPUs
+# complements hardware RSS: 7.05/6.95 Gbit/s and 98.7 percent symmetry. Keep
+# RFS disabled because its trial made LACP flow selection unstable.
+for q in /sys/devices/platform/soc/15100000.ethernet/net/*/queues/rx-*/rps_cpus; do
+	[ -w "$q" ] && echo f > "$q"
 done
+for q in /sys/devices/platform/soc/15100000.ethernet/net/*/queues/rx-*/rps_flow_cnt; do
+	[ -w "$q" ] && echo 0 > "$q"
+done
+[ -w /proc/sys/net/core/rps_sock_flow_entries ] &&
+	echo 0 > /proc/sys/net/core/rps_sock_flow_entries
 
 # IRQ affinity selects the queue CPU. Keep the identically named threaded-NAPI
 # workers runnable on all four cores.
