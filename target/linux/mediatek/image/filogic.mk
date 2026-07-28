@@ -743,7 +743,7 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS_OVERLAY := mt7988a-bananapi-bpi-r4-emmc \
 	mt7988a-bananapi-bpi-r4-rtc \
 	mt7988a-bananapi-bpi-r4-sd
-  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-mt7988-rss-tuning otb-mt7988-hwlro \
+  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mt7988-rss-tuning otb-mt7988-hwlro \
 	-openvpn-openssl -openvpn-easy-rsa -luci-proto-openvpn \
 	-mwan3 -luci-app-mwan3 -pbr -luci-app-pbr \
 	-sqm-scripts -luci-app-sqm -miniupnpd-nftables -luci-app-upnp \
@@ -777,7 +777,7 @@ define Device/bananapi_bpi-r4-pro-8x
 	kmod-mt7996-233-firmware kmod-rtc-pcf8563 kmod-sfp \
 	kmod-dsa-mxl862xx kmod-phy-aeonsemi-as21xxx kmod-usb3 \
 	e2fsprogs f2fsck mkf2fs mt7988-wo-firmware \
-	r4pro-bonding-early bridger otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-mt7988-rss-tuning otb-mt7988-hwlro
+	r4pro-bonding-early bridger otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mt7988-rss-tuning otb-mt7988-hwlro
   SUPPORTED_DEVICES += bananapi,bpi-r4-pro-8x
   IMAGES := sysupgrade.itb
   KERNEL_LOADADDR := 0x46000000
