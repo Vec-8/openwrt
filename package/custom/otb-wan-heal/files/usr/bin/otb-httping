@@ -1,0 +1,104 @@
+#!/bin/sh
+
+# Contrôle HTTPS strict compatible avec l'appel "httping" de mwan3track.
+# Les variables DEVICE, SRCIP et FWMARK sont injectées par mwan3 afin de
+# contraindre réellement chaque requête à l'interface WAN testée.
+
+umask 077
+
+timeout=5
+family="-4"
+quiet=0
+url=""
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		-4)
+			family="-4"
+			;;
+		-6)
+			family="-6"
+			;;
+		-c)
+			shift
+			;;
+		-t)
+			shift
+			[ -n "$1" ] && timeout="$1"
+			;;
+		-q)
+			quiet=1
+			;;
+		http://*|https://*)
+			url="$1"
+			;;
+	esac
+	shift
+done
+
+[ -n "$url" ] || exit 2
+
+test_device="${DEVICE##*/}"
+if [ -n "$test_device" ] &&
+	[ -e "/tmp/otb-wan-heal/force-fail.$test_device" ]; then
+	exit 1
+fi
+
+host="${url#*://}"
+host="${host%%/*}"
+
+case "$host" in
+	connectivitycheck.gstatic.com)
+		target="https://connectivitycheck.gstatic.com/generate_204"
+		expected_code="204"
+		expected_body="empty"
+		;;
+	cp.cloudflare.com)
+		target="https://cp.cloudflare.com/generate_204"
+		expected_code="204"
+		expected_body="empty"
+		;;
+	captive.apple.com)
+		target="https://captive.apple.com/hotspot-detect.html"
+		expected_code="200"
+		expected_body="apple-success"
+		;;
+	*)
+		# Un hôte non explicitement autorisé ne doit jamais être considéré sain.
+		exit 2
+		;;
+esac
+
+tmp="/tmp/otb-httping.$$.body"
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+
+code="$(
+	curl "$family" \
+		--silent \
+		--show-error \
+		--noproxy '*' \
+		--proto '=https' \
+		--tlsv1.2 \
+		--connect-timeout "$timeout" \
+		--max-time "$((timeout + 3))" \
+		--max-redirs 0 \
+		--output "$tmp" \
+		--write-out '%{http_code}' \
+		"$target" 2>/dev/null
+)"
+rc=$?
+
+[ "$rc" -eq 0 ] || exit 1
+[ "$code" = "$expected_code" ] || exit 1
+
+case "$expected_body" in
+	empty)
+		[ ! -s "$tmp" ] || exit 1
+		;;
+	apple-success)
+		grep -q '>Success<' "$tmp" || exit 1
+		;;
+esac
+
+[ "$quiet" -eq 1 ] || printf 'HTTP %s %s\n' "$code" "$host"
+exit 0

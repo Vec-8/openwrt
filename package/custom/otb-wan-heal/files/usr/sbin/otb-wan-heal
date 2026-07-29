@@ -1,0 +1,246 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+umask 077
+
+CONFIG="otb-wan-heal"
+STATE_DIR="/tmp/otb-wan-heal"
+ACTION_LOCK="$STATE_DIR/action.lock"
+
+log()
+{
+	logger -t otb-wan-heal -p "daemon.${1:-notice}" -- "$2"
+}
+
+read_number()
+{
+	local path="$1"
+	local fallback="$2"
+	local value
+
+	if [ -r "$path" ]; then
+		read -r value < "$path"
+	fi
+
+	case "$value" in
+		''|*[!0-9]*) printf '%s\n' "$fallback" ;;
+		*) printf '%s\n' "$value" ;;
+	esac
+}
+
+write_number()
+{
+	printf '%s\n' "$2" > "$1"
+}
+
+mwan_status()
+{
+	ubus call mwan3 status 2>/dev/null |
+		jsonfilter -e "@.interfaces.$1.status" 2>/dev/null
+}
+
+qmi_data_status()
+{
+	local interface="$1"
+	local status cid device
+
+	status="$(ubus call "network.interface.$interface" status 2>/dev/null)"
+	cid="$(printf '%s' "$status" | jsonfilter -e '@.data.cid_4' 2>/dev/null)"
+	device="$(uci -q get "network.$interface.device")"
+
+	[ -n "$cid" ] && [ -e "$device" ] || {
+		printf '%s\n' "disconnected"
+		return
+	}
+
+	uqmi -s -d "$device" -t 2000 \
+		--set-client-id "wds,$cid" \
+		--get-data-status 2>/dev/null |
+		jsonfilter -e '@' 2>/dev/null
+}
+
+retry_delay()
+{
+	case "$1" in
+		0) printf '%s\n' 60 ;;
+		1) printf '%s\n' 180 ;;
+		2) printf '%s\n' 600 ;;
+		*) printf '%s\n' 1800 ;;
+	esac
+}
+
+clear_online_state()
+{
+	local section="$1"
+
+	rm -f \
+		"$STATE_DIR/$section.offline_since" \
+		"$STATE_DIR/$section.offline_logged"
+}
+
+reset_after_stability()
+{
+	local section="$1"
+	local now="$2"
+	local stable_reset="$3"
+	local since
+
+	since="$(read_number "$STATE_DIR/$section.online_since" "$now")"
+	[ -r "$STATE_DIR/$section.online_since" ] ||
+		write_number "$STATE_DIR/$section.online_since" "$now"
+
+	if [ $((now - since)) -ge "$stable_reset" ]; then
+		write_number "$STATE_DIR/$section.attempt" 0
+		write_number "$STATE_DIR/$section.next_action" 0
+	fi
+}
+
+restart_interface()
+{
+	local interface="$1"
+	local delay="$2"
+
+	log notice "Relance ciblée de $interface"
+	ifdown "$interface"
+	sleep "$delay"
+	ifup "$interface"
+	log notice "Commande de reconnexion envoyée à $interface"
+}
+
+process_wan()
+{
+	local section="$1"
+	local interface mode restart_delay
+	local interval offline_grace global_action_cooldown stable_reset startup_grace
+	local now uptime status qmi_status offline_since next_action attempt delay last_global
+
+	config_get interface "$section" interface "$section"
+	config_get mode "$section" mode "mwan-recover"
+	config_get restart_delay "$section" restart_delay 5
+
+	config_get interval globals interval 15
+	config_get offline_grace globals offline_grace 35
+	config_get global_action_cooldown globals global_action_cooldown 90
+	config_get stable_reset globals stable_reset 600
+	config_get startup_grace globals startup_grace 120
+
+	now="$(date +%s)"
+	status="$(mwan_status "$interface")"
+
+	if [ "$mode" = "restart-qmi" ]; then
+		qmi_status="$(qmi_data_status "$interface")"
+		[ "$qmi_status" = "connected" ] || status="offline"
+	fi
+
+	if [ "$status" = "online" ]; then
+		clear_online_state "$section"
+		reset_after_stability "$section" "$now" "$stable_reset"
+		return
+	fi
+
+	rm -f "$STATE_DIR/$section.online_since"
+	offline_since="$(read_number "$STATE_DIR/$section.offline_since" "$now")"
+	[ -r "$STATE_DIR/$section.offline_since" ] ||
+		write_number "$STATE_DIR/$section.offline_since" "$now"
+
+	if [ ! -e "$STATE_DIR/$section.offline_logged" ]; then
+		log warning "$interface est $status ; il est exclu des politiques actives"
+		: > "$STATE_DIR/$section.offline_logged"
+	fi
+
+	# Pour une fibre derrière un portail captif, mwan3 assure lui-même
+	# l'exclusion et la réadmission. Un redémarrage local ne répare pas le FAI.
+	[ "$mode" = "mwan-recover" ] && return
+
+	uptime="$(cut -d. -f1 /proc/uptime 2>/dev/null)"
+	case "$uptime" in
+		''|*[!0-9]*) uptime=0 ;;
+	esac
+	[ "$uptime" -ge "$startup_grace" ] || return
+
+	[ $((now - offline_since)) -ge "$offline_grace" ] || return
+
+	next_action="$(read_number "$STATE_DIR/$section.next_action" 0)"
+	[ "$now" -ge "$next_action" ] || return
+
+	last_global="$(read_number "$STATE_DIR/global_last_action" 0)"
+	[ $((now - last_global)) -ge "$global_action_cooldown" ] || return
+
+	mkdir "$ACTION_LOCK" 2>/dev/null || return
+	trap 'rmdir "$ACTION_LOCK" 2>/dev/null' EXIT HUP INT TERM
+
+	attempt="$(read_number "$STATE_DIR/$section.attempt" 0)"
+	restart_interface "$interface" "$restart_delay"
+	delay="$(retry_delay "$attempt")"
+	write_number "$STATE_DIR/$section.attempt" $((attempt + 1))
+	write_number "$STATE_DIR/$section.next_action" $((now + delay))
+	write_number "$STATE_DIR/global_last_action" "$now"
+
+	rmdir "$ACTION_LOCK" 2>/dev/null
+	trap - EXIT HUP INT TERM
+}
+
+run_once()
+{
+	mkdir -p "$STATE_DIR"
+	config_load "$CONFIG"
+	config_foreach process_wan wan
+}
+
+show_status()
+{
+	local section interface mode status qmi attempt next_action
+
+	mkdir -p "$STATE_DIR"
+	config_load "$CONFIG"
+
+	show_one()
+	{
+		section="$1"
+		config_get interface "$section" interface "$section"
+		config_get mode "$section" mode "mwan-recover"
+		status="$(mwan_status "$interface")"
+		qmi="-"
+		[ "$mode" = "restart-qmi" ] && qmi="$(qmi_data_status "$interface")"
+		attempt="$(read_number "$STATE_DIR/$section.attempt" 0)"
+		next_action="$(read_number "$STATE_DIR/$section.next_action" 0)"
+		printf '%s mwan=%s qmi=%s mode=%s tentatives=%s prochaine_action=%s\n' \
+			"$interface" "${status:-inconnu}" "$qmi" "$mode" "$attempt" "$next_action"
+	}
+
+	config_foreach show_one wan
+}
+
+daemon()
+{
+	local enabled interval
+
+	while true; do
+		config_load "$CONFIG"
+		config_get_bool enabled globals enabled 1
+		config_get interval globals interval 15
+
+		[ "$enabled" -eq 1 ] && run_once
+		sleep "$interval"
+	done
+}
+
+case "$1" in
+	daemon)
+		daemon
+		;;
+	once)
+		run_once
+		;;
+	status)
+		show_status
+		;;
+	reset-state)
+		rm -rf "$STATE_DIR"
+		;;
+	*)
+		echo "Usage: $0 {daemon|once|status|reset-state}" >&2
+		exit 2
+		;;
+esac

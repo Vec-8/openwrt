@@ -1,0 +1,21 @@
+config globals 'globals'
+	option enabled '1'
+	option interval '15'
+	option offline_grace '35'
+	option global_action_cooldown '90'
+	option stable_reset '600'
+	option startup_grace '120'
+
+config wan 'wan5g_free'
+	option interface 'wan5g_free'
+	option mode 'restart-qmi'
+	option restart_delay '5'
+
+config wan 'wan5g_BYG'
+	option interface 'wan5g_BYG'
+	option mode 'restart-qmi'
+	option restart_delay '5'
+
+config wan 'wan_fibre'
+	option interface 'wan_fibre'
+	option mode 'mwan-recover'

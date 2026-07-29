@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Compatibilité volontaire avec le moteur de suivi mwan3.
+exec /usr/bin/otb-httping "$@"

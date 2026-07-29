@@ -1,0 +1,40 @@
+#!/bin/sh
+
+# Ne touche qu'aux trois interfaces WAN déjà définies par la configuration OTB.
+# Les routes, métriques, membres, politiques et règles MWAN restent inchangés.
+
+configured=0
+
+for interface in wan_fibre wan5g_free wan5g_BYG; do
+	[ "$(uci -q get "mwan3.$interface")" = "interface" ] || {
+		logger -t otb-wan-heal -p daemon.warning \
+			"Section mwan3.$interface absente : configuration ignorée"
+		continue
+	}
+
+	uci -q set "mwan3.$interface.enabled=1"
+	uci -q set "mwan3.$interface.family=ipv4"
+	uci -q set "mwan3.$interface.track_method=httping"
+	uci -q set "mwan3.$interface.httping_ssl=1"
+	uci -q set "mwan3.$interface.reliability=2"
+	uci -q set "mwan3.$interface.count=1"
+	uci -q set "mwan3.$interface.timeout=5"
+	uci -q set "mwan3.$interface.interval=10"
+	uci -q set "mwan3.$interface.failure_interval=5"
+	uci -q set "mwan3.$interface.recovery_interval=10"
+	uci -q set "mwan3.$interface.down=3"
+	uci -q set "mwan3.$interface.up=1"
+	uci -q set "mwan3.$interface.initial_state=offline"
+	uci -q delete "mwan3.$interface.track_ip"
+	uci -q add_list "mwan3.$interface.track_ip=connectivitycheck.gstatic.com"
+	uci -q add_list "mwan3.$interface.track_ip=cp.cloudflare.com"
+	uci -q add_list "mwan3.$interface.track_ip=captive.apple.com"
+	configured=$((configured + 1))
+done
+
+if [ "$configured" -gt 0 ]; then
+	uci -q commit mwan3
+fi
+
+/etc/init.d/otb-wan-heal enable >/dev/null 2>&1 || exit 1
+exit 0
