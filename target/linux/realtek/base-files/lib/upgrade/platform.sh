@@ -27,6 +27,11 @@ platform_do_upgrade() {
 	local board=$(board_name)
 
 	case "$board" in
+	horaco,zx-swtgw2c8f|\
+	sodola,sl-swtgw3c8f)
+		PART_NAME="runtime"
+		default_do_upgrade "$1"
+		;;
 	plasmacloud,esx28|\
 	plasmacloud,mcx3|\
 	plasmacloud,psx8|\
