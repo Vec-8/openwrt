@@ -28,10 +28,6 @@ start() {
 
 	OTB_LUCI_CHANGED=0
 
-	# Correctif commun aux R4 : résolution des VLAN à travers bond-trunk.
-	restore_file "$source_root/29_ports.js" \
-		'/www/luci-static/resources/view/status/include/29_ports.js' 0644
-
 	model="$(ubus call system board 2>/dev/null | jsonfilter -e '@.model' 2>/dev/null)"
 	hostname="$(uci -q get system.@system[0].hostname)"
 

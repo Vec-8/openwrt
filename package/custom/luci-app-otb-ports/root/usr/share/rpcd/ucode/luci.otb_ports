@@ -1,0 +1,297 @@
+#!/usr/bin/env ucode
+
+'use strict';
+
+import { basename, glob, popen, readfile } from 'fs';
+
+function number_from_string(value) {
+	let match_value = match(value || '', /-?[0-9]+([.][0-9]+)?/);
+	return match_value ? +match_value[0] : null;
+}
+
+function read_text(path) {
+	let value = readfile(path);
+	return value == null ? null : trim(value);
+}
+
+function read_number(path) {
+	return number_from_string(read_text(path));
+}
+
+function contains(values, expected) {
+	for (let value in (values || []))
+		if (value == expected)
+			return true;
+	return false;
+}
+
+function push_unique(values, value) {
+	if (value == null || value == '' || contains(values, value))
+		return;
+	push(values, value);
+}
+
+function board_information() {
+	let content = readfile('/etc/board.json');
+	let board = {};
+
+	try { board = json(content || '{}'); }
+	catch (e) { board = {}; }
+
+	let roles = {};
+	let ports = [];
+	let networks = board.network || {};
+
+	for (let role, network in networks) {
+		for (let name in (network.ports || [])) {
+			push_unique(ports, name);
+			roles[name] = role;
+		}
+
+		if (network.device != null) {
+			push_unique(ports, network.device);
+			roles[network.device] = role;
+		}
+	}
+
+	return {
+		model: board.model || {},
+		ports,
+		roles
+	};
+}
+
+function vlan_flags(raw_flags) {
+	let flags = [];
+
+	for (let flag in (raw_flags || []))
+		push(flags, flag);
+
+	return {
+		flags,
+		pvid: contains(flags, 'PVID'),
+		untagged: contains(flags, 'Egress Untagged'),
+		tagged: !contains(flags, 'Egress Untagged')
+	};
+}
+
+function bridge_vlans() {
+	let result = {};
+	let fd = popen('/usr/sbin/bridge -j vlan show 2>/dev/null', 'r');
+	if (!fd)
+		return result;
+
+	let raw = fd.read('all');
+	fd.close();
+
+	let rows = [];
+	try { rows = json(raw || '[]'); }
+	catch (e) { rows = []; }
+
+	if (type(rows) != 'array')
+		return result;
+
+	for (let row in rows) {
+		let vlans = [];
+
+		for (let vlan in (row.vlans || [])) {
+			let entry = vlan_flags(vlan.flags);
+			entry.id = +vlan.vlan;
+			entry.source = 'direct';
+			push(vlans, entry);
+		}
+
+		result[row.ifname] = vlans;
+	}
+
+	return result;
+}
+
+function parse_bond(path) {
+	let bond = {
+		name: basename(path),
+		slaves: []
+	};
+	let slave = null;
+	let content = readfile(path) || '';
+
+	for (let line in split(content, '\n')) {
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		let key = trim(substr(line, 0, separator));
+		let field_value = trim(substr(line, separator + 1));
+
+		if (key == 'Slave Interface') {
+			slave = { name: field_value };
+			push(bond.slaves, slave);
+			continue;
+		}
+
+		if (slave != null) {
+			switch (key) {
+			case 'MII Status': slave.status = field_value; break;
+			case 'Speed': slave.speed = field_value; break;
+			case 'Duplex': slave.duplex = field_value; break;
+			case 'Link Failure Count': slave.link_failures = +field_value; break;
+			case 'Aggregator ID': slave.aggregator_id = field_value; break;
+			case 'Actor Churn State': slave.actor_churn = field_value; break;
+			case 'Partner Churn State': slave.partner_churn = field_value; break;
+			case 'Actor Churned Count': slave.actor_churn_count = +field_value; break;
+			case 'Partner Churned Count': slave.partner_churn_count = +field_value; break;
+			}
+			continue;
+		}
+
+		switch (key) {
+		case 'Bonding Mode': bond.mode = field_value; break;
+		case 'Transmit Hash Policy': bond.hash_policy = field_value; break;
+		case 'MII Status': bond.status = field_value; break;
+		case 'LACP active': bond.lacp_active = field_value; break;
+		case 'LACP rate': bond.lacp_rate = field_value; break;
+		case 'Min links': bond.min_links = +field_value; break;
+		case 'Aggregator selection policy (ad_select)': bond.ad_select = field_value; break;
+		case 'Aggregator ID': bond.aggregator_id = field_value; break;
+		case 'Number of ports': bond.active_ports = +field_value; break;
+		case 'Partner Key': bond.partner_key = field_value; break;
+		case 'Partner Mac Address': bond.partner_mac = field_value; break;
+		}
+	}
+
+	return bond;
+}
+
+function bonds_and_members(vlans) {
+	let bonds = [];
+	let member_to_bond = {};
+
+	for (let path in glob('/proc/net/bonding/*')) {
+		let bond = parse_bond(path);
+		bond.vlans = vlans[bond.name] || [];
+
+		for (let slave in bond.slaves)
+			member_to_bond[slave.name] = bond.name;
+
+		push(bonds, bond);
+	}
+
+	return { bonds, member_to_bond };
+}
+
+function netdev_index_map() {
+	let map = {};
+
+	for (let path in glob('/sys/class/net/*')) {
+		let name = basename(path);
+		let ifindex = read_text(path + '/ifindex');
+		if (ifindex != null)
+			map[ifindex] = name;
+	}
+
+	return map;
+}
+
+function inherited_vlans(entries, bond) {
+	let result = [];
+
+	for (let item in (entries || [])) {
+		let copy = {
+			id: item.id,
+			flags: item.flags || [],
+			pvid: item.pvid,
+			untagged: item.untagged,
+			tagged: item.tagged,
+			source: 'bond',
+			inherited_from: bond
+		};
+		push(result, copy);
+	}
+
+	return result;
+}
+
+function port_status(name, role, vlans, member_to_bond, ifindex_map) {
+	let path = '/sys/class/net/' + name;
+	let bond = member_to_bond[name];
+	let direct_vlans = vlans[name] || [];
+	let effective_vlans = length(direct_vlans)
+		? direct_vlans
+		: (bond ? inherited_vlans(vlans[bond] || [], bond) : []);
+	let master_index = read_text(path + '/master/ifindex');
+	let carrier = read_number(path + '/carrier');
+	let speed = read_number(path + '/speed');
+
+	return {
+		name,
+		role: role || null,
+		present: read_text(path + '/ifindex') != null,
+		operstate: read_text(path + '/operstate'),
+		carrier: carrier,
+		link: carrier == 1 ? 'up' : 'down',
+		speed_mbps: speed != null && speed > 0 ? speed : null,
+		duplex: read_text(path + '/duplex'),
+		address: read_text(path + '/address'),
+		master: master_index != null ? ifindex_map[master_index] : null,
+		bond: bond || null,
+		vlan_source: length(direct_vlans) ? 'direct' : (bond ? 'bond' : 'none'),
+		vlans: effective_vlans
+	};
+}
+
+function all_ports(board, vlans, bond_state) {
+	let names = [];
+
+	for (let name in board.ports)
+		push_unique(names, name);
+
+	for (let bond in bond_state.bonds)
+		for (let slave in bond.slaves)
+			push_unique(names, slave.name);
+
+	/* Keep board.json as the primary source, with conservative fallbacks for
+	 * boards whose Ethernet inventory is incomplete.
+	 */
+	for (let path in glob('/sys/class/net/*')) {
+		let name = basename(path);
+		if (match(name, /^(lan[0-9]+|wan|sfp-[A-Za-z0-9_.-]+|mxl_lan[0-9]+)$/))
+			push_unique(names, name);
+	}
+
+	sort(names);
+	let ifindex_map = netdev_index_map();
+	let ports = [];
+
+	for (let name in names)
+		push(ports, port_status(
+			name,
+			board.roles[name],
+			vlans,
+			bond_state.member_to_bond,
+			ifindex_map
+		));
+
+	return ports;
+}
+
+const methods = {
+	status: {
+		call: function() {
+			let board = board_information();
+			let vlans = bridge_vlans();
+			let bond_state = bonds_and_members(vlans);
+
+			return {
+				schema: 1,
+				collected_at: time(),
+				hostname: read_text('/proc/sys/kernel/hostname'),
+				board: board.model,
+				ports: all_ports(board, vlans, bond_state),
+				bonds: bond_state.bonds,
+				bridge_vlans: vlans
+			};
+		}
+	}
+};
+
+return { 'luci.otb_ports': methods };

@@ -1,0 +1,10 @@
+{
+	"luci-app-otb-ports": {
+		"description": "État en lecture seule des ports, LACP et VLAN effectifs",
+		"read": {
+			"ubus": {
+				"luci.otb_ports": [ "status" ]
+			}
+		}
+	}
+}

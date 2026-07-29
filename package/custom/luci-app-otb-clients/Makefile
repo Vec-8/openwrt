@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-otb-clients
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=6
+PKG_RELEASE:=7
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
 
@@ -13,17 +13,17 @@ define Package/luci-app-otb-clients
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=OTB unified Wi-Fi and Ethernet client diagnostics
-  DEPENDS:=+luci-base +rpcd +ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-nl80211 +ip-bridge +ethtool-full +jshn
+  DEPENDS:=+luci-base +luci-app-otb-ports +rpcd +ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +ucode-mod-nl80211 +ip-bridge +ethtool-full +jshn
   PKGARCH:=all
 endef
 
 define Package/luci-app-otb-clients/description
  Read-only diagnostics for Wi-Fi and directly attached Ethernet clients seen by
- the BPI-R4 Pro, Sud and Nord nodes. It also preserves the validated LuCI VLAN
- resolver on every R4, displays inherited VLAN IDs directly on physical LACP
- member ports and restores the pre-update OTB WAN/equipment dashboard on the
- R4 Pro. The collector never changes network, Wi-Fi, bridge, VLAN, DSA or
- firewall configuration.
+ the BPI-R4 Pro, Sud and Nord nodes. The dedicated luci-app-otb-ports
+ dependency owns the global physical-port, LACP and effective-VLAN view. This
+ package restores the pre-update OTB WAN/equipment dashboard on the R4 Pro.
+ The collector never changes network, Wi-Fi, bridge, VLAN, DSA or firewall
+ configuration.
 endef
 
 define Package/luci-app-otb-clients/conffiles
