@@ -1,0 +1,13 @@
+{
+	"admin/status/otb-ports": {
+		"title": "Ports et VLAN",
+		"order": 17,
+		"action": {
+			"type": "view",
+			"path": "status/otb-ports"
+		},
+		"depends": {
+			"acl": [ "luci-app-otb-ports" ]
+		}
+	}
+}

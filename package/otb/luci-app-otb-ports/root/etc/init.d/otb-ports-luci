@@ -1,0 +1,28 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+
+USE_PROCD=0
+
+SOURCE='/usr/share/otb-luci-overrides/29_ports.js'
+TARGET='/www/luci-static/resources/view/status/include/29_ports.js'
+BACKUP='/www/luci-static/resources/view/status/include/29_ports.js.pre-otb-ports'
+
+start() {
+	[ -s "$SOURCE" ] || return 1
+	mkdir -p "${TARGET%/*}"
+
+	if [ -s "$TARGET" ] && [ ! -e "$BACKUP" ]; then
+		cp "$TARGET" "$BACKUP"
+		chmod 0644 "$BACKUP"
+	fi
+
+	tmp="${TARGET}.otb-new"
+	cp "$SOURCE" "$tmp" || return 1
+	chmod 0644 "$tmp"
+	mv "$tmp" "$TARGET"
+
+	rm -f /tmp/luci-indexcache
+	rm -rf /tmp/luci-modulecache
+}
