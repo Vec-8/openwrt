@@ -1,0 +1,205 @@
+// SPDX-License-Identifier: Apache-2.0
+
+'use strict';
+
+import { basename, glob, popen, readfile } from 'fs';
+
+function number_from_string(value) {
+	let match_value = match(value || '', /-?[0-9]+([.][0-9]+)?/);
+	return match_value ? +match_value[0] : null;
+}
+
+function read_number(path, divisor) {
+	let raw = readfile(path);
+	if (raw == null)
+		return null;
+
+	let value = number_from_string(raw);
+	return value == null ? null : value / (divisor || 1);
+}
+
+function parse_bond(path) {
+	const bond = { name: basename(path), slaves: [] };
+	let slave = null;
+	let content = readfile(path) || '';
+
+	for (let line in split(content, '\n')) {
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		let key = trim(substr(line, 0, separator));
+		let field_value = trim(substr(line, separator + 1));
+
+		if (key == 'Slave Interface') {
+			slave = { name: field_value };
+			push(bond.slaves, slave);
+			continue;
+		}
+
+		if (slave != null) {
+			switch (key) {
+			case 'MII Status': slave.status = field_value; break;
+			case 'Speed': slave.speed = field_value; break;
+			case 'Duplex': slave.duplex = field_value; break;
+			case 'Link Failure Count': slave.link_failures = +field_value; break;
+			case 'Aggregator ID': slave.aggregator_id = field_value; break;
+			case 'Actor Churn State': slave.actor_churn = field_value; break;
+			case 'Partner Churn State': slave.partner_churn = field_value; break;
+			case 'Actor Churned Count': slave.actor_churn_count = +field_value; break;
+			case 'Partner Churned Count': slave.partner_churn_count = +field_value; break;
+			}
+			continue;
+		}
+
+		switch (key) {
+		case 'Bonding Mode': bond.mode = field_value; break;
+		case 'Transmit Hash Policy': bond.hash_policy = field_value; break;
+		case 'MII Status': bond.status = field_value; break;
+		case 'LACP active': bond.lacp_active = field_value; break;
+		case 'LACP rate': bond.lacp_rate = field_value; break;
+		case 'Min links': bond.min_links = +field_value; break;
+		case 'Aggregator selection policy (ad_select)': bond.ad_select = field_value; break;
+		case 'Aggregator ID': bond.aggregator_id = field_value; break;
+		case 'Number of ports': bond.active_ports = +field_value; break;
+		case 'Partner Key': bond.partner_key = field_value; break;
+		case 'Partner Mac Address': bond.partner_mac = field_value; break;
+		}
+	}
+
+	return bond;
+}
+
+function bridge_vlans() {
+	let result = {};
+	let fd = popen('/usr/sbin/bridge -j vlan show 2>/dev/null', 'r');
+	if (!fd)
+		return result;
+
+	let raw = fd.read('all');
+	fd.close();
+	let rows = json(raw || '[]');
+	if (type(rows) != 'array')
+		return result;
+
+	for (let row in rows) {
+		let vlans = [];
+		for (let vlan in (row.vlans || []))
+			push(vlans, { id: vlan.vlan, flags: vlan.flags || [] });
+		result[row.ifname] = vlans;
+	}
+
+	return result;
+}
+
+function thermal_zones() {
+	let zones = [];
+
+	for (let path in glob('/sys/class/thermal/thermal_zone*')) {
+		let temperature = read_number(path + '/temp', 1000);
+		if (temperature == null)
+			continue;
+
+		let zone = {
+			name: basename(path),
+			type: trim(readfile(path + '/type') || basename(path)),
+			temperature_c: temperature,
+			critical_c: null
+		};
+
+		for (let trip_path in glob(path + '/trip_point_*_temp')) {
+			let type_path = replace(trip_path, /_temp$/, '_type');
+			let trip_type = trim(readfile(type_path) || '');
+			if (trip_type == 'critical') {
+				zone.critical_c = read_number(trip_path, 1000);
+				break;
+			}
+			if (trip_type == 'hot' && zone.critical_c == null)
+				zone.critical_c = read_number(trip_path, 1000);
+		}
+
+		push(zones, zone);
+	}
+
+	return zones;
+}
+
+function ethtool_field(output, prefix) {
+	for (let line in split(output || '', '\n')) {
+		line = trim(line);
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		let key = trim(substr(line, 0, separator));
+		if (key == prefix)
+			return trim(substr(line, separator + 1));
+	}
+
+	return null;
+}
+
+function optical_power_dbm(value) {
+	let match_value = match(value || '', /-?[0-9]+([.][0-9]+)?[[:space:]]*dBm/);
+	return match_value ? number_from_string(match_value[0]) : null;
+}
+
+function optical_modules() {
+	let modules = [];
+
+	for (let path in glob('/sys/class/net/lan*')) {
+		let name = basename(path);
+		if (!match(name, /^lan[0-9]+$/))
+			continue;
+
+		let fd = popen('/usr/sbin/ethtool -m ' + name + ' 2>/dev/null', 'r');
+		let output = fd ? fd.read('all') : '';
+		if (fd)
+			fd.close();
+
+		push(modules, {
+			interface: name,
+			link: trim(readfile(path + '/operstate') || 'unknown'),
+			dom_supported: length(output || '') > 0,
+			vendor: ethtool_field(output, 'Vendor name'),
+			part_number: ethtool_field(output, 'Vendor PN'),
+			serial: ethtool_field(output, 'Vendor SN'),
+			wavelength_nm: number_from_string(ethtool_field(output, 'Laser wavelength')),
+			temperature_c: number_from_string(ethtool_field(output, 'Module temperature')),
+			temperature_high_warning_c: number_from_string(ethtool_field(output, 'Module temperature high warning threshold')),
+			temperature_high_alarm_c: number_from_string(ethtool_field(output, 'Module temperature high alarm threshold')),
+			voltage_v: number_from_string(ethtool_field(output, 'Module voltage')),
+			bias_ma: number_from_string(ethtool_field(output, 'Laser bias current')),
+			tx_dbm: optical_power_dbm(ethtool_field(output, 'Laser output power')),
+			rx_dbm: optical_power_dbm(ethtool_field(output, 'Receiver signal average optical power'))
+		});
+	}
+
+	return modules;
+}
+
+const methods = {
+	status: {
+		call: function() {
+			let vlans = bridge_vlans();
+			let bonds = [];
+
+			for (let path in glob('/proc/net/bonding/*')) {
+				let bond = parse_bond(path);
+				bond.vlans = vlans[bond.name] || [];
+				for (let slave in bond.slaves)
+					slave.inherited_vlans = bond.vlans;
+				push(bonds, bond);
+			}
+
+			return {
+				bonds,
+				bridge_vlans: vlans,
+				thermal_zones: thermal_zones(),
+				optical_modules: optical_modules()
+			};
+		}
+	}
+};
+
+return { 'luci.otb_lacp': methods };

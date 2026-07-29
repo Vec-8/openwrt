@@ -1,0 +1,95 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "LACP and temperatures"
+msgstr "LACP et températures"
+
+msgid "VLAN membership belongs to the logical bond. The same VLANs are repeated below on each physical member as inherited VLANs."
+msgstr "L’appartenance VLAN est portée par le bond logique. Les mêmes VLAN sont répétés ci-dessous sur chaque membre physique comme VLAN hérités."
+
+msgid "Fanless switch temperature"
+msgstr "Température du switch fanless"
+
+msgid "SFP optical telemetry"
+msgstr "Télémétrie des optiques SFP"
+
+msgid "Thermal display is warning from 70 °C and critical from 85 °C. Hardware thresholds remain visible separately."
+msgstr "L’affichage thermique passe en avertissement à 70 °C et en critique à 85 °C. Les seuils matériels restent visibles séparément."
+
+msgid "Last refresh:"
+msgstr "Dernière actualisation :"
+
+msgid "No active bonding device was found."
+msgstr "Aucun périphérique d’agrégation actif n’a été trouvé."
+
+msgid "Status"
+msgstr "État"
+
+msgid "Transmit hash policy"
+msgstr "Politique de hachage en émission"
+
+msgid "LACP rate"
+msgstr "Fréquence LACP"
+
+msgid "Minimum active links"
+msgstr "Nombre minimal de liens actifs"
+
+msgid "Active members"
+msgstr "Membres actifs"
+
+msgid "Partner MAC address"
+msgstr "Adresse MAC du partenaire"
+
+msgid "VLANs on logical bond"
+msgstr "VLAN du bond logique"
+
+msgid "Physical members"
+msgstr "Membres physiques"
+
+msgid "Member"
+msgstr "Membre"
+
+msgid "Actor / partner churn"
+msgstr "Churn acteur / partenaire"
+
+msgid "Inherited VLANs"
+msgstr "VLAN hérités"
+
+msgid "Sensor"
+msgstr "Capteur"
+
+msgid "Temperature"
+msgstr "Température"
+
+msgid "Module warning / alarm"
+msgstr "Avertissement / alarme du module"
+
+msgid "Kernel critical threshold"
+msgstr "Seuil critique du noyau"
+
+msgid "Port"
+msgstr "Port"
+
+msgid "Voltage"
+msgstr "Tension"
+
+msgid "Laser bias"
+msgstr "Courant laser"
+
+msgid "TX power"
+msgstr "Puissance TX"
+
+msgid "RX power"
+msgstr "Puissance RX"
+
+msgid "Module"
+msgstr "Module"
+
+msgid "DOM unavailable"
+msgstr "Télémétrie DOM indisponible"
+
+msgid "Unavailable"
+msgstr "Indisponible"
+
+msgid "Up"
+msgstr "Actif"

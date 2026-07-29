@@ -1,0 +1,13 @@
+{
+  "admin/status/otb-lacp": {
+    "title": "LACP et températures",
+    "order": 85,
+    "action": {
+      "type": "view",
+      "path": "status/otb-lacp"
+    },
+    "depends": {
+      "acl": [ "luci-app-otb-lacp" ]
+    }
+  }
+}

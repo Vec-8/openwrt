@@ -1,0 +1,10 @@
+{
+  "luci-app-otb-lacp": {
+    "description": "Read-only access to LACP, inherited VLAN and temperature status",
+    "read": {
+      "ubus": {
+        "luci.otb_lacp": [ "status" ]
+      }
+    }
+  }
+}
