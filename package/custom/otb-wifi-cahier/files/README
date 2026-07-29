@@ -1,0 +1,29 @@
+OTB Wi-Fi cahier des charges V3 - audit MLO passif
+
+Ce paquet ne modifie jamais /etc/config/wireless, ne redemarre aucun service et
+ne recharge aucune radio. Il verifie uniquement la configuration conservee.
+
+Architecture materielle :
+
+* une seule carte BE14 ;
+* deux fonctions/liaisons PCIe pour cette meme carte ;
+* un wiphy multiradio 2,4/5/6 GHz.
+
+Exigences :
+
+* SSID principal : MLO 2,4 + 5 + 6 GHz ;
+* SSID invité : MLO 2,4 + 5 + 6 GHz ;
+* SSID IoT multibande : MLO 2,4 + 5 GHz ;
+* SSID IoT hérité : BSS 2,4 GHz hors MLO ;
+* EHT40 / EHT160 / EHT320 ;
+* pays FR ;
+* consigne UCI live conservee : 27 dBm sur radio0, radio1 et radio2.
+
+Ces consignes ne contournent pas la reglementation. Le noyau et la base
+reglementaire FR limitent ensuite chaque lien a son maximum autorise
+(20 dBm en 2,4 GHz, 26 dBm sur le canal 100 en 5 GHz et 23 dBm en 6 GHz dans la
+configuration actuelle).
+
+Audit manuel, sans impression des cles :
+
+    otb-wifi-cahier-audit

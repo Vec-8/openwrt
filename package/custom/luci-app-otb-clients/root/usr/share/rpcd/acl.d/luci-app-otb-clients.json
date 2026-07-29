@@ -1,0 +1,14 @@
+{
+	"luci-app-otb-clients": {
+		"description": "Diagnostic en lecture seule des clients OTB",
+		"read": {
+			"file": {
+				"/usr/libexec/otb-lacp/status.sh": [ "exec" ]
+			},
+			"ubus": {
+				"luci.otb-clients": [ "getStatus" ]
+			},
+			"uci": [ "otb-clients", "network" ]
+		}
+	}
+}

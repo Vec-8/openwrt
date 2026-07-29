@@ -1,0 +1,78 @@
+From: OTB R4 Pro development <codex@localhost>
+Date: Mon, 20 Jul 2026 22:30:00 +0200
+Subject: [PATCH] net: dsa: mxl862xx: allow platform to disable LAG offload
+
+The MxL trunk engine can only aggregate ports owned by the MxL862xx
+switch fabric.  On the BPI-R4 Pro the requested 2x10G bond combines
+mxl_lan5, which is a DSA user port of the MxL86252C, with eth1, which is
+a direct MT7988 MAC.  Claiming MxL hardware LAG offload for that
+heterogeneous bond leaves DSA in a partially offloaded topology and the
+bridge/VLAN replay currently ends in a kernel stack overflow.
+
+Add an opt-out firmware property.  Returning -EOPNOTSUPP from
+port_lag_join is the documented DSA path for keeping a LAG in software;
+the bonding driver remains responsible for IEEE 802.3ad and both links.
+
+Reported-by: Kevin Nicolas
+---
+diff --git a/drivers/net/dsa/mxl862xx/mxl862xx.c b/drivers/net/dsa/mxl862xx/mxl862xx.c
+index 075db67..8c86ad7 100644
+--- a/drivers/net/dsa/mxl862xx/mxl862xx.c
++++ b/drivers/net/dsa/mxl862xx/mxl862xx.c
+@@ -18,6 +18,7 @@
+ #include <linux/of_mdio.h>
+ #include <linux/phy.h>
+ #include <linux/phylink.h>
++#include <linux/property.h>
+ #include <linux/dsa/8021q.h>
+ #include <net/dsa.h>
+ 
+@@ -2401,6 +2402,16 @@ static int mxl862xx_port_lag_join(struct dsa_switch *ds, int port,
+ 	u8 new_hash;
+ 	int ret;
+ 
++	/* A heterogeneous bond containing ports outside this switch cannot be
++	 * represented by the MxL trunking engine.  Firmware can therefore opt
++	 * out of hardware LAG offload and let DSA keep the bond in software.
++	 */
++	if (priv->disable_lag_offload) {
++		NL_SET_ERR_MSG_MOD(extack,
++				   "Hardware LAG offload disabled by platform policy");
++		return -EOPNOTSUPP;
++	}
++
+ 	if (dsa_is_cpu_port(ds, port)) {
+ 		NL_SET_ERR_MSG_MOD(extack, "CPU port LAG not supported");
+ 		return -EOPNOTSUPP;
+@@ -4384,6 +4395,10 @@ static int mxl862xx_probe(struct mdio_device *mdiodev)
+ 		return -ENOMEM;
+ 
+ 	priv->mdiodev = mdiodev;
++	priv->disable_lag_offload =
++		device_property_read_bool(dev, "maxlinear,disable-lag-offload");
++	if (priv->disable_lag_offload)
++		dev_info(dev, "hardware LAG offload disabled by platform policy\n");
+ 
+ 	ds = devm_kzalloc(dev, sizeof(*ds), GFP_KERNEL);
+ 	if (!ds)
+diff --git a/drivers/net/dsa/mxl862xx/mxl862xx.h b/drivers/net/dsa/mxl862xx/mxl862xx.h
+index d1d7992..e46aa84 100644
+--- a/drivers/net/dsa/mxl862xx/mxl862xx.h
++++ b/drivers/net/dsa/mxl862xx/mxl862xx.h
+@@ -381,6 +381,8 @@ struct mxl862xx_fw_version {
+  * @trunk_hash:         current global hash field bitmask (6 bits,
+  *                      MXL862XX_TRUNK_HASH_*); union of all active LAGs'
+  *                      hash requirements
++ * @disable_lag_offload: platform policy forcing software bonding when a LAG
++ *                      spans ports outside the MxL862xx switch fabric
+  * @mirror_dest:        current mirror destination port, or -1 if no mirror
+  *                      session is active; used to detect monitor port conflicts
+  * @stats_work:         periodic work item that polls RMON hardware counters
+@@ -405,6 +407,7 @@ struct mxl862xx_priv {
+ 	u16 cpu_trap_fid;
+ 	u16 lag_bridge_ports[MXL862XX_MAX_LAG_IDS + 1];
+ 	u8 trunk_hash;
++	bool disable_lag_offload;
+ 	int mirror_dest;
+ 	bool block_host;
+ 	bool skip_teardown;

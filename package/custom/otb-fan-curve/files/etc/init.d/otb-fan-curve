@@ -1,0 +1,100 @@
+#!/bin/sh /etc/rc.common
+
+START=19
+STOP=89
+EXTRA_COMMANDS="status restore"
+EXTRA_HELP="        status   Afficher la courbe et l'etat actuel
+        restore  Restaurer les seuils OpenWrt jusqu'au prochain demarrage"
+
+ZONE=/sys/class/thermal/thermal_zone0
+
+load_settings() {
+	config_load otb-fan
+	config_get MEDIUM "$PROFILE" medium_temp "$MEDIUM_DEFAULT"
+	config_get HIGH "$PROFILE" high_temp "$HIGH_DEFAULT"
+}
+
+select_board() {
+	BOARD="$(ubus call system board 2>/dev/null |
+		jsonfilter -e '@.board_name')"
+	case "$BOARD" in
+		bananapi,bpi-r4-pro-8x)
+			PROFILE=r4pro
+			MEDIUM_DEFAULT=60000
+			HIGH_DEFAULT=68000
+			HIGH_TRIP=1
+			MEDIUM_TRIP=2
+			STOCK_HIGH=117000
+			STOCK_MEDIUM=85000
+			;;
+		bananapi,bpi-r4)
+			PROFILE=r4sud
+			MEDIUM_DEFAULT=60000
+			HIGH_DEFAULT=68000
+			HIGH_TRIP=2
+			MEDIUM_TRIP=3
+			STOCK_HIGH=115000
+			STOCK_MEDIUM=85000
+			;;
+		*)
+			echo "Carte non prise en charge: ${BOARD:-inconnue}" >&2
+			return 1
+			;;
+	esac
+	HIGH_PATH="$ZONE/trip_point_${HIGH_TRIP}_temp"
+	MEDIUM_PATH="$ZONE/trip_point_${MEDIUM_TRIP}_temp"
+	[ -w "$HIGH_PATH" ] && [ -w "$MEDIUM_PATH" ]
+}
+
+apply_curve() {
+	select_board || return 1
+	load_settings
+	case "$MEDIUM:$HIGH" in
+		*[!0-9:]*|:*|*:)
+			echo "Seuils invalides" >&2
+			return 1
+			;;
+	esac
+	[ "$MEDIUM" -ge 45000 ] && [ "$MEDIUM" -le 65000 ] || return 1
+	[ "$HIGH" -ge 65000 ] && [ "$HIGH" -le 69000 ] || return 1
+	[ "$MEDIUM" -lt "$HIGH" ] || return 1
+	printf '%s\n' "$MEDIUM" >"$MEDIUM_PATH" || return 1
+	printf '%s\n' "$HIGH" >"$HIGH_PATH" || return 1
+	logger -t otb-fan-curve \
+		"courbe appliquee: moyen=${MEDIUM}mC, maximum=${HIGH}mC, carte=${BOARD}"
+}
+
+restore_curve() {
+	select_board || return 1
+	printf '%s\n' "$STOCK_MEDIUM" >"$MEDIUM_PATH" || return 1
+	printf '%s\n' "$STOCK_HIGH" >"$HIGH_PATH" || return 1
+	logger -t otb-fan-curve \
+		"seuils OpenWrt restaures, carte=${BOARD}"
+}
+
+start() {
+	apply_curve
+}
+
+stop() {
+	restore_curve
+}
+
+restore() {
+	restore_curve
+}
+
+status() {
+	select_board || return 1
+	load_settings
+	PWM_NAME="$(grep -l '^pwmfan$' /sys/class/hwmon/hwmon*/name \
+		2>/dev/null | head -n1)"
+	PWM_PATH="${PWM_NAME%/name}/pwm1"
+	echo "Carte: $BOARD"
+	echo "Profil: $PROFILE"
+	echo "Temperature: $(cat "$ZONE/temp") mC"
+	echo "Seuil moyen: $(cat "$MEDIUM_PATH") mC (configure: $MEDIUM mC)"
+	echo "Seuil maximum: $(cat "$HIGH_PATH") mC (configure: $HIGH mC)"
+	echo "Etat refroidissement: $(cat /sys/class/thermal/cooling_device0/cur_state)/$(cat /sys/class/thermal/cooling_device0/max_state)"
+	[ -r "$PWM_PATH" ] && echo "PWM: $(cat "$PWM_PATH")/255"
+}

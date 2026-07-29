@@ -1,0 +1,5 @@
+#!/bin/sh
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ -x /usr/libexec/otb-mt7988-hwlro ] || exit 0
+/usr/libexec/otb-mt7988-hwlro apply >/dev/null 2>&1

@@ -1,0 +1,33 @@
+#!/bin/sh
+
+iface="${1-}"
+case "$iface" in
+  ''|*[!A-Za-z0-9_:-]*)
+    echo "Interface refusée" >&2
+    exit 2
+    ;;
+esac
+
+allowed_ifaces="$(uci -q get otb-clients.main.wan_restart_iface 2>/dev/null || true)"
+[ -n "$allowed_ifaces" ] || allowed_ifaces='wan_fibre wan5g_primary wan5g_backup'
+
+permitted=0
+for candidate in $allowed_ifaces; do
+  if [ "$candidate" = "$iface" ]; then
+    permitted=1
+    break
+  fi
+done
+
+if [ "$permitted" -ne 1 ]; then
+  echo "Interface refusée: $iface" >&2
+  exit 2
+fi
+
+logger -t otb-luci "Redémarrage WAN demandé depuis LuCI: $iface"
+/sbin/ifdown "$iface" 2>&1 || true
+sleep 2
+/sbin/ifup "$iface" 2>&1
+sleep 1
+/usr/sbin/mwan3 ifup "$iface" 2>&1 || true
+ubus call network.interface."$iface" status 2>/dev/null || true

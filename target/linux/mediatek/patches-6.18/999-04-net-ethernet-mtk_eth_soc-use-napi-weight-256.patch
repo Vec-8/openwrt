@@ -1,0 +1,38 @@
+From: OTB <otb@local>
+Subject: [PATCH] net: ethernet: mediatek: use NAPI poll weight 256
+
+Increase the poll budget for TX and all MT7988 RSS RX NAPI instances.
+This does not alter networking configuration, RSS hashing or Wi-Fi.
+
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -43,6 +43,7 @@
+ #define MTK_DMA_SIZE(x)		(SZ_##x)
+ #define MTK_FQ_DMA_HEAD		32
+ #define MTK_FQ_DMA_LENGTH	2048
++#define MTK_NAPI_WEIGHT		256
+ #define MTK_RX_ETH_HLEN		(ETH_HLEN + ETH_FCS_LEN)
+ #define MTK_RX_HLEN		(NET_SKB_PAD + MTK_RX_ETH_HLEN + NET_IP_ALIGN)
+ #define MTK_DMA_DUMMY_DESC	0xffffffff
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -6175,13 +6175,16 @@ static int mtk_probe(struct platform_dev
+ 		goto err_unreg_netdev;
+ 	}
+-	netif_napi_add(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
+-	netif_napi_add(eth->dummy_dev, &eth->rx_napi[0].napi, mtk_napi_rx);
++	netif_napi_add_weight(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx,
++			      MTK_NAPI_WEIGHT);
++	netif_napi_add_weight(eth->dummy_dev, &eth->rx_napi[0].napi, mtk_napi_rx,
++			      MTK_NAPI_WEIGHT);
+ 
+ 	if (MTK_HAS_CAPS(eth->soc->caps, MTK_RSS)) {
+ 		for (i = 1; i < MTK_RX_RSS_NUM; i++)
+-			netif_napi_add(eth->dummy_dev, &eth->rx_napi[MTK_RSS_RING(i)].napi,
+-					   mtk_napi_rx);
++			netif_napi_add_weight(eth->dummy_dev,
++					      &eth->rx_napi[MTK_RSS_RING(i)].napi,
++					      mtk_napi_rx, MTK_NAPI_WEIGHT);
+ 	}
+ 
+ 	platform_set_drvdata(pdev, eth);

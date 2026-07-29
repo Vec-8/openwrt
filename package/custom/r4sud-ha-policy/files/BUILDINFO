@@ -1,0 +1,15 @@
+BUILD_ID=r4sud-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-r2-rpsf-rfs0-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-aligned-pro-ha-luci-fr-20260729
+BUILD_SEQUENCE=2026072931
+OPENWRT_VERSION=SNAPSHOT
+OPENWRT_REVISION=recorded-by-etc-openwrt_release-in-final-image
+KERNEL_VERSION=6.18.39
+BASE=official-openwrt-main
+CONTAINER_POLICY=enabled-only-with-dedicated-ext4-or-f2fs-srv-and-marker
+STORAGE_POLICY=existing-emmc-or-external-persistent-srv-no-formatting
+NETWORK_POLICY=no-automatic-network-vlan-bridge-firewall-change
+RSS_PORT=official-mt7988-rss-r2-irq-0-1-2-3-rps-f-rfs-0-plus-rxqfix-logical-queues-0-to-3
+WIFI_POLICY=FR-preserve-existing-three-MLO-groups-passive-cahier-audit-only
+ROUTING_EXTRAS=absent-openvpn-mwan3-pbr-sqm-upnp-modemmanager-qmi-mbim
+WIREGUARD_POLICY=preserved-existing-config-no-automatic-change
+WIFI_DRIVER=official-mt76-50480826-mt7996-stock-lifecycle-probe-timeout-guard-only
+BE14_IDENTITY=one-card-two-pcie-functions-14c3-7990-main-14c3-7991-hif-driven-by-mt7996e

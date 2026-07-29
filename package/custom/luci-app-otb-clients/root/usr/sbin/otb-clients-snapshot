@@ -1,0 +1,488 @@
+#!/usr/bin/env ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import * as nl80211 from 'nl80211';
+import { connect } from 'ubus';
+import { cursor } from 'uci';
+
+function shellquote(value) {
+	value = value == null ? '' : `${value}`;
+	return "'" + replace(value, "'", "'\\''") + "'";
+}
+
+function readtrim(path) {
+	let value = fs.readfile(path);
+	return value == null ? null : trim(value);
+}
+
+function number_or_null(value) {
+	if (value == null || value == '')
+		return null;
+
+	let n = +value;
+	return n == n ? n : null;
+}
+
+function bool_value(value) {
+	return value == true || value == 1 || value == '1' || value == 'true';
+}
+
+function as_array(value) {
+	if (value == null)
+		return [];
+	return type(value) == 'array' ? value : [ value ];
+}
+
+function contains(list, value) {
+	return index(as_array(list), value) >= 0;
+}
+
+function node_identity(main) {
+	let hostname = readtrim('/proc/sys/kernel/hostname') || 'OpenWrt';
+	let id = main?.node_id;
+	let label = main?.node_label;
+
+	if (!id || id == 'auto') {
+		if (match(lc(hostname), /pro/))
+			id = 'pro';
+		else if (match(lc(hostname), /sud/))
+			id = 'sud';
+		else if (match(lc(hostname), /nord/))
+			id = 'nord';
+		else
+			id = replace(lc(hostname), /[^a-z0-9_-]+/g, '-');
+	}
+
+	if (!label || label == 'auto') {
+		if (id == 'pro')
+			label = 'R4 Pro';
+		else if (id == 'sud')
+			label = 'R4 Sud';
+		else if (id == 'nord')
+			label = 'R4 Nord';
+		else
+			label = hostname;
+	}
+
+	return { id, label, hostname };
+}
+
+function channel_from_frequency(freq) {
+	freq = +freq;
+	if (!freq)
+		return null;
+	if (freq == 2484)
+		return 14;
+	if (freq == 5935)
+		return 2;
+	if (freq < 2484)
+		return (freq - 2407) / 5;
+	if (freq >= 4910 && freq <= 4980)
+		return (freq - 4000) / 5;
+	if (freq < 5950)
+		return (freq - 5000) / 5;
+	if (freq <= 45000)
+		return (freq - 5950) / 5;
+	return null;
+}
+
+function band_from_frequency(freq) {
+	freq = +freq;
+	if (!freq)
+		return null;
+	if (freq == 5935 || freq >= 5950)
+		return '6';
+	if (freq < 2484)
+		return '2.4';
+	if (freq < 5950)
+		return '5';
+	return null;
+}
+
+function rate_mbps(rate) {
+	let raw = rate?.bitrate32 ?? rate?.bitrate;
+	return raw == null ? null : (+raw / 10.0);
+}
+
+function rate_width(rate) {
+	if (!rate)
+		return null;
+	if (rate.width_320)
+		return 320;
+	if (rate.width_160)
+		return 160;
+	if (rate.width_80p80)
+		return 160;
+	if (rate.width_80)
+		return 80;
+	if (rate.width_40)
+		return 40;
+	if (rate.width_10)
+		return 10;
+	if (rate.width_5)
+		return 5;
+	return rate_mbps(rate) != null ? 20 : null;
+}
+
+function rate_standard(rate) {
+	if (!rate)
+		return { rank: 0, code: null, label: null };
+	if (rate.eht_mcs != null || rate.eht_nss != null)
+		return { rank: 5, code: 'EHT', label: 'Wi-Fi 7 / EHT' };
+	if (rate.he_mcs != null || rate.he_nss != null)
+		return { rank: 4, code: 'HE', label: 'Wi-Fi 6 / HE' };
+	if (rate.vht_mcs != null || rate.vht_nss != null)
+		return { rank: 3, code: 'VHT', label: 'Wi-Fi 5 / VHT' };
+	if (rate.mcs != null)
+		return { rank: 2, code: 'HT', label: 'Wi-Fi 4 / HT' };
+	if (rate_mbps(rate) != null)
+		return { rank: 1, code: 'LEGACY', label: 'Legacy' };
+	return { rank: 0, code: null, label: null };
+}
+
+function rate_nss(rate) {
+	if (!rate)
+		return null;
+
+	let nss = rate.eht_nss ?? rate.he_nss ?? rate.vht_nss;
+	if (nss != null)
+		return +nss;
+
+	if (rate.mcs != null && +rate.mcs >= 0 && +rate.mcs <= 31)
+		return int(+rate.mcs / 8) + 1;
+
+	return rate_mbps(rate) != null ? 1 : null;
+}
+
+function format_rate_raw(rate) {
+	let mbps = rate_mbps(rate);
+	if (mbps == null)
+		return null;
+
+	let parts = [ sprintf('%.1f Mbit/s', mbps) ];
+	let width = rate_width(rate);
+	let standard = rate_standard(rate);
+	let mcs = rate.eht_mcs ?? rate.he_mcs ?? rate.vht_mcs ?? rate.mcs;
+	let nss = rate_nss(rate);
+
+	if (width)
+		push(parts, `${width} MHz`);
+	if (standard.code && standard.code != 'LEGACY')
+		push(parts, standard.code);
+	if (mcs != null)
+		push(parts, `MCS ${mcs}`);
+	if (nss != null)
+		push(parts, `NSS ${nss}`);
+
+	return join(' · ', parts);
+}
+
+function strongest_standard(tx, rx) {
+	let a = rate_standard(tx);
+	let b = rate_standard(rx);
+	return a.rank >= b.rank ? a : b;
+}
+
+function widest_rate(tx, rx) {
+	let a = rate_width(tx);
+	let b = rate_width(rx);
+	if (a == null)
+		return b;
+	if (b == null)
+		return a;
+	return max(a, b);
+}
+
+function get_noise(ifname, frequency) {
+	let survey = nl80211.request(
+		nl80211.const.NL80211_CMD_GET_SURVEY,
+		nl80211.const.NLM_F_DUMP,
+		{ dev: ifname }
+	) ?? [];
+
+	for (let entry in survey)
+		if (+entry?.survey_info?.frequency == +frequency)
+			return number_or_null(entry?.survey_info?.noise);
+
+	return null;
+}
+
+function get_host_hints(ubus) {
+	let hints = ubus.call('luci-rpc', 'getHostHints');
+	return hints ?? {};
+}
+
+function parse_leases() {
+	let leases = {};
+	let content = fs.readfile('/tmp/dhcp.leases') || '';
+
+	for (let line in split(content, '\n')) {
+		let m = match(line, /^\S+\s+([0-9A-Fa-f:]{17})\s+(\S+)\s+(\S+)/);
+		if (!m)
+			continue;
+
+		let mac = lc(m[1]);
+		leases[mac] = {
+			ip: m[2] == '*' ? null : m[2],
+			hostname: m[3] == '*' ? null : m[3]
+		};
+	}
+
+	return leases;
+}
+
+function identity_for(mac, hints, leases) {
+	let hint = hints?.[uc(mac)] ?? hints?.[lc(mac)] ?? {};
+	let lease = leases?.[lc(mac)] ?? {};
+	let ips = hint?.ipaddrs ?? [];
+	let ip6 = hint?.ip6addrs ?? [];
+
+	return {
+		hostname: hint?.name || lease?.hostname || null,
+		ip: ips?.[0] || lease?.ip || null,
+		ipv6: ip6?.[0] || null
+	};
+}
+
+function fdb_metadata(bridge) {
+	let map = {};
+	if (!match(bridge, /^[A-Za-z0-9_.-]+$/))
+		return map;
+
+	let pipe = fs.popen(`/usr/sbin/bridge -j fdb show br ${shellquote(bridge)} 2>/dev/null`, 'r');
+	if (!pipe)
+		return map;
+
+	let content = pipe.read('all') || '';
+	pipe.close();
+
+	let entries;
+	try { entries = json(content) ?? []; }
+	catch (e) { entries = []; }
+
+	for (let entry in entries) {
+		let mac = lc(entry?.mac || '');
+		let ifname = entry?.ifname;
+		if (!mac || !ifname)
+			continue;
+		if (entry?.master != bridge)
+			continue;
+		if (contains(entry?.flags, 'self'))
+			continue;
+
+		let key = `${mac}|${ifname}`;
+		let current = map[key];
+		if (!current || (current.vlan == null && entry?.vlan != null))
+			map[key] = { vlan: number_or_null(entry?.vlan), state: entry?.state || '' };
+	}
+
+	return map;
+}
+
+function interface_speed(ifname) {
+	let carrier = number_or_null(readtrim(`/sys/class/net/${ifname}/carrier`));
+	let speed = number_or_null(readtrim(`/sys/class/net/${ifname}/speed`));
+	let duplex = readtrim(`/sys/class/net/${ifname}/duplex`);
+	let phys_port = readtrim(`/sys/class/net/${ifname}/phys_port_name`);
+	let max_speed = null;
+
+	if (speed != null && speed < 0)
+		speed = null;
+
+	if (match(ifname, /^[A-Za-z0-9_.-]+$/)) {
+		let pipe = fs.popen(`/usr/sbin/ethtool ${shellquote(ifname)} 2>/dev/null`, 'r');
+		let output = pipe ? (pipe.read('all') || '') : '';
+		if (pipe)
+			pipe.close();
+
+		for (let m in match(output, /([0-9]+)base/g)) {
+			let candidate = +m[1];
+			if (candidate > 0 && (max_speed == null || candidate > max_speed))
+				max_speed = candidate;
+		}
+	}
+
+	return {
+		carrier: carrier == 1,
+		speed_mbps: speed,
+		max_speed_mbps: max_speed,
+		duplex: duplex || null,
+		phys_port: phys_port || null
+	};
+}
+
+function is_unicast_mac(mac) {
+	return match(mac || '', /^[0-9a-fA-F][02468aAcCeE]:/) != null;
+}
+
+function is_automatic_excluded_port(ifname) {
+	return match(ifname || '', /^(bond|br[-.]|eth[0-9]+$|sfp|wwan|lo$)/) != null;
+}
+
+let config = cursor();
+let main = config.get_all('otb-clients', 'main') ?? {};
+let node = node_identity(main);
+let bridge = main?.bridge || 'br-lan';
+let excluded_ports = as_array(main?.exclude_port);
+let ubus = connect();
+let hints = get_host_hints(ubus);
+let leases = parse_leases();
+let wireless = ubus.call('network.wireless', 'status') ?? {};
+let wireless_ifaces = {};
+
+for (let radio, data in wireless) {
+	for (let iface in (data?.interfaces ?? [])) {
+		if (!iface?.ifname)
+			continue;
+		wireless_ifaces[iface.ifname] = {
+			radio,
+			ssid: iface?.config?.ssid || iface?.config?.mesh_id || null,
+			disabled: bool_value(iface?.config?.disabled)
+		};
+	}
+}
+
+let fdb = fdb_metadata(bridge);
+let interfaces = nl80211.request(
+	nl80211.const.NL80211_CMD_GET_INTERFACE,
+	nl80211.const.NLM_F_DUMP
+) ?? [];
+let wifi = [];
+let wifi_macs = {};
+
+for (let iface in interfaces) {
+	let ifname = iface?.ifname;
+	let wifi_config = wireless_ifaces?.[ifname];
+	if (!ifname || !wifi_config || iface?.iftype != nl80211.const.NL80211_IFTYPE_AP)
+		continue;
+
+	let frequency = number_or_null(iface?.wiphy_freq);
+	let noise = get_noise(ifname, frequency);
+	let stations = nl80211.request(
+		nl80211.const.NL80211_CMD_GET_STATION,
+		nl80211.const.NLM_F_DUMP,
+		{ dev: ifname }
+	) ?? [];
+	let hostapd = ubus.call(`hostapd.${ifname}`, 'get_clients') ?? {};
+
+	for (let station in stations) {
+		let mac = lc(station?.mac || '');
+		let info = station?.sta_info ?? {};
+		if (!mac)
+			continue;
+
+		let tx = info?.tx_bitrate;
+		let rx = info?.rx_bitrate;
+		let standard = strongest_standard(tx, rx);
+		let identity = identity_for(mac, hints, leases);
+		let fdb_info = fdb?.[`${mac}|${ifname}`] ?? {};
+		let capabilities = hostapd?.clients?.[mac] ?? hostapd?.clients?.[uc(mac)] ?? {};
+		let signal = number_or_null(info?.signal);
+		let signal_avg = number_or_null(info?.signal_avg);
+
+		wifi_macs[mac] = true;
+		push(wifi, {
+			type: 'wifi',
+			mac,
+			hostname: identity.hostname,
+			ip: identity.ip,
+			ipv6: identity.ipv6,
+			node_id: node.id,
+			node_label: node.label,
+			ap: node.label,
+			interface: ifname,
+			radio: wifi_config.radio,
+			ssid: wifi_config.ssid,
+			vlan: number_or_null(fdb_info?.vlan),
+			frequency_mhz: frequency,
+			channel: channel_from_frequency(frequency),
+			band: band_from_frequency(frequency),
+			signal_dbm: signal,
+			signal_avg_dbm: signal_avg,
+			chain_signal_dbm: info?.chain_signal ?? [],
+			chain_signal_avg_dbm: info?.chain_signal_avg ?? [],
+			noise_dbm: noise,
+			snr_db: signal != null && noise != null ? signal - noise : null,
+			tx_mbps: rate_mbps(tx),
+			rx_mbps: rate_mbps(rx),
+			tx_rate_raw: format_rate_raw(tx),
+			rx_rate_raw: format_rate_raw(rx),
+			tx_rate_info: tx ?? {},
+			rx_rate_info: rx ?? {},
+			standard: standard.code,
+			standard_label: standard.label,
+			width_mhz: widest_rate(tx, rx),
+			nss_tx: rate_nss(tx),
+			nss_rx: rate_nss(rx),
+			inactive_ms: number_or_null(info?.inactive_time),
+			connected_seconds: number_or_null(info?.connected_time),
+			tx_packets: number_or_null(info?.tx_packets),
+			rx_packets: number_or_null(info?.rx_packets),
+			tx_retries: number_or_null(info?.tx_retries),
+			tx_failed: number_or_null(info?.tx_failed),
+			rx_drop_misc: number_or_null(info?.rx_drop_misc),
+			expected_throughput_mbps: info?.expected_throughput == null ? null : (+info.expected_throughput / 1000.0),
+			capabilities: {
+				ht: bool_value(capabilities?.ht),
+				vht: bool_value(capabilities?.vht),
+				he: bool_value(capabilities?.he),
+				eht: bool_value(capabilities?.eht)
+			}
+		});
+	}
+}
+
+let ethernet = [];
+let seen_ethernet = {};
+
+for (let key, entry in fdb) {
+	let fields = split(key, '|');
+	let mac = fields[0];
+	let ifname = fields[1];
+	if (!mac || !ifname || wifi_macs[mac])
+		continue;
+	if (!is_unicast_mac(mac) || entry?.state == 'permanent')
+		continue;
+	if (contains(excluded_ports, ifname) || is_automatic_excluded_port(ifname))
+		continue;
+	if (wireless_ifaces?.[ifname] || !readtrim(`/sys/class/net/${ifname}/phys_switch_id`))
+		continue;
+	if (seen_ethernet[mac])
+		continue;
+
+	let identity = identity_for(mac, hints, leases);
+	let link = interface_speed(ifname);
+	seen_ethernet[mac] = true;
+
+	push(ethernet, {
+		type: 'ethernet',
+		mac,
+		hostname: identity.hostname,
+		ip: identity.ip,
+		ipv6: identity.ipv6,
+		node_id: node.id,
+		node_label: node.label,
+		ap: node.label,
+		interface: ifname,
+		port: ifname,
+		phys_port: link.phys_port,
+		vlan: number_or_null(entry?.vlan),
+		carrier: link.carrier,
+		speed_mbps: link.speed_mbps,
+		max_speed_mbps: link.max_speed_mbps,
+		duplex: link.duplex
+	});
+}
+
+let result = {
+	schema: 1,
+	collected_at: time(),
+	node,
+	wifi,
+	ethernet,
+	errors: []
+};
+
+printf('%.J\n', result);

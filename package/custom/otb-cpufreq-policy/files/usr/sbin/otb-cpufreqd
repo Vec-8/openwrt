@@ -1,0 +1,195 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+TAG=otb-cpufreq
+STATE_FILE=/tmp/otb-cpufreq.state
+
+load_policy() {
+	config_load otb-cpufreq
+	config_get_bool enabled main enabled 1
+	config_get governor main governor schedutil
+	config_get min_freq main min_freq 800000
+	config_get boost_max main boost_max_freq 1800000
+	config_get rate_limit main rate_limit_us 10000
+	config_get interval main interval 5
+
+	board="$(ubus call system board 2>/dev/null |
+		jsonfilter -e '@.board_name')"
+	case "$board" in
+		bananapi,bpi-r4-pro-8x)
+			profile=r4pro
+			thermal_high_default=70000
+			thermal_low_default=65000
+			thermal_cap_default=1500000
+			emergency_high_default=85000
+			emergency_low_default=78000
+			emergency_cap_default=1100000
+			;;
+		bananapi,bpi-r4)
+			profile=r4sud
+			thermal_high_default=70000
+			thermal_low_default=65000
+			thermal_cap_default=1500000
+			emergency_high_default=85000
+			emergency_low_default=78000
+			emergency_cap_default=1100000
+			;;
+		*)
+			logger -t "$TAG" "carte non prise en charge: ${board:-inconnue}"
+			return 1
+			;;
+	esac
+
+	# Les sections par carte priment. En leur absence, les valeurs sûres
+	# codées pour la carte s'appliquent immédiatement, même avant migration
+	# du fichier UCI historique.
+	config_get thermal_high "$profile" thermal_high "$thermal_high_default"
+	config_get thermal_low "$profile" thermal_low "$thermal_low_default"
+	config_get thermal_cap "$profile" thermal_cap_freq "$thermal_cap_default"
+	config_get emergency_high "$profile" emergency_high "$emergency_high_default"
+	config_get emergency_low "$profile" emergency_low "$emergency_low_default"
+	config_get emergency_cap "$profile" emergency_cap_freq "$emergency_cap_default"
+}
+
+validate_policy() {
+	local value
+	for value in \
+		"$min_freq" "$boost_max" "$rate_limit" "$interval" \
+		"$thermal_high" "$thermal_low" "$thermal_cap" \
+		"$emergency_high" "$emergency_low" "$emergency_cap"
+	do
+		case "$value" in ''|*[!0-9]*) return 1 ;; esac
+	done
+	[ "$interval" -ge 1 ] &&
+		[ "$min_freq" -le "$emergency_cap" ] &&
+		[ "$emergency_cap" -le "$thermal_cap" ] &&
+		[ "$thermal_cap" -le "$boost_max" ] &&
+		[ "$thermal_low" -lt "$thermal_high" ] &&
+		[ "$thermal_high" -le "$emergency_low" ] &&
+		[ "$emergency_low" -lt "$emergency_high" ]
+}
+
+write_state() {
+	umask 077
+	{
+		printf 'board=%s\n' "$board"
+		printf 'profile=%s\n' "$profile"
+		printf 'state=%s\n' "$state"
+		printf 'temperature_mC=%s\n' "$temp"
+		printf 'min_freq_kHz=%s\n' "$min_freq"
+		printf 'max_freq_kHz=%s\n' "$1"
+	} >"$STATE_FILE"
+}
+
+apply_limit() {
+	local requested_max="$1" policy available selected applied=0
+	for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+		[ -d "$policy" ] || continue
+		available="$(cat "$policy/scaling_available_governors" 2>/dev/null)"
+		selected="$governor"
+		case " $available " in
+			*" $selected "*) ;;
+			*" schedutil "*) selected=schedutil ;;
+			*" ondemand "*) selected=ondemand ;;
+			*) logger -t "$TAG" "aucun gouverneur dynamique disponible pour $policy"; continue ;;
+		esac
+
+		# Réduire d'abord le minimum permet aussi l'application d'un plafond bas.
+		echo "$min_freq" > "$policy/scaling_min_freq" || continue
+		echo "$requested_max" > "$policy/scaling_max_freq" || continue
+		echo "$selected" > "$policy/scaling_governor" || continue
+
+		# Le noyau 6.18 du MT7988 expose un délai schedutil unique.
+		if [ "$selected" = schedutil ] && \
+		   [ -w "$policy/schedutil/rate_limit_us" ]; then
+			echo "$rate_limit" > "$policy/schedutil/rate_limit_us"
+		fi
+		applied=$((applied + 1))
+	done
+	[ "$applied" -gt 0 ]
+}
+
+apply_state() {
+	local new_state="$1" max
+	case "$new_state" in
+		normal) max="$boost_max" ;;
+		thermal) max="$thermal_cap" ;;
+		emergency) max="$emergency_cap" ;;
+		*) return 1 ;;
+	esac
+	if apply_limit "$max"; then
+		logger -t "$TAG" "etat=$new_state min=${min_freq}kHz max=${max}kHz gouverneur=$governor temperature=${temp}mC"
+		state="$new_state"
+		write_state "$max"
+	fi
+}
+
+load_policy || exit 1
+[ "$enabled" -eq 1 ] || exit 0
+if ! validate_policy; then
+	logger -t "$TAG" "politique invalide pour le profil $profile"
+	exit 1
+fi
+
+state=unknown
+sensor_failed=0
+while :; do
+	temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
+	case "$temp" in
+		''|*[!0-9]*)
+			# Une sonde illisible ne doit jamais ouvrir le plafond à 1,8 GHz.
+			if [ "$state" = emergency ]; then
+				temp="$emergency_high"
+			else
+				temp="$thermal_high"
+			fi
+			if [ "$sensor_failed" -eq 0 ]; then
+				logger -t "$TAG" "sonde thermique illisible: plafond de sécurité appliqué"
+				sensor_failed=1
+			fi
+			;;
+		*)
+			if [ "$sensor_failed" -eq 1 ]; then
+				logger -t "$TAG" "sonde thermique de nouveau lisible"
+				sensor_failed=0
+			fi
+			;;
+	esac
+
+	case "$state" in
+		unknown)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -ge "$thermal_high" ]; then
+				apply_state thermal
+			else
+				apply_state normal
+			fi
+			;;
+		normal)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -ge "$thermal_high" ]; then
+				apply_state thermal
+			fi
+			;;
+		thermal)
+			if [ "$temp" -ge "$emergency_high" ]; then
+				apply_state emergency
+			elif [ "$temp" -le "$thermal_low" ]; then
+				apply_state normal
+			fi
+			;;
+		emergency)
+			if [ "$temp" -le "$emergency_low" ]; then
+				if [ "$temp" -le "$thermal_low" ]; then
+					apply_state normal
+				else
+					apply_state thermal
+				fi
+			fi
+			;;
+	esac
+	sleep "$interval"
+done

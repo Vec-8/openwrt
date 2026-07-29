@@ -1,0 +1,20 @@
+#!/bin/sh
+MARKER=/srv/.r4sud-ha-storage-ready
+/etc/init.d/r4sud-ha-guard apply >/dev/null 2>&1 || exit 1
+uci -q batch <<'UCI'
+set dockerd.globals=globals
+set dockerd.globals.data_root='/srv/docker'
+set dockerd.globals.log_driver='local'
+set dockerd.globals.log_level='warn'
+set dockerd.globals.iptables='0'
+set dockerd.globals.ip6tables='0'
+UCI
+uci -q commit dockerd
+if [ -f "$MARKER" ] && awk '$2=="/srv" && ($3=="ext4" || $3=="f2fs") && $1!="overlayfs:/overlay" && $1!="/dev/fitrw" {ok=1} END{exit !ok}' /proc/mounts; then
+ /etc/init.d/dockerd enable >/dev/null 2>&1 || exit 1
+ /etc/init.d/dockerd running >/dev/null 2>&1 || /etc/init.d/dockerd start >/dev/null 2>&1 || exit 1
+else
+ /etc/init.d/dockerd stop >/dev/null 2>&1 || true
+ /etc/init.d/dockerd disable >/dev/null 2>&1 || true
+fi
+exit 0

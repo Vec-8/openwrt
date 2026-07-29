@@ -1,0 +1,11 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=90
+extra_command "apply" "Reinstall the guarded dockerd init script"
+SAFE_INIT=/usr/libexec/r4sud-ha-policy/dockerd.init.safe
+DOCKER_INIT=/etc/init.d/dockerd
+MARKER=/srv/.r4sud-ha-storage-ready
+storage_ready() { [ -f "$MARKER" ] && awk '$2=="/srv" && ($3=="ext4" || $3=="f2fs") && $1!="overlayfs:/overlay" && $1!="/dev/fitrw" {ok=1} END{exit !ok}' /proc/mounts; }
+apply() { [ -r "$SAFE_INIT" ] && cp "$SAFE_INIT" "$DOCKER_INIT" && chmod 0755 "$DOCKER_INIT"; }
+boot() { apply || return 1; if storage_ready; then "$DOCKER_INIT" enable >/dev/null 2>&1 || return 1; "$DOCKER_INIT" running >/dev/null 2>&1 || "$DOCKER_INIT" start >/dev/null 2>&1 || return 1; else "$DOCKER_INIT" stop >/dev/null 2>&1 || true; "$DOCKER_INIT" disable >/dev/null 2>&1 || true; fi; }
+start() { boot; }

@@ -1,0 +1,3 @@
+config core 'core'
+	# Probe safety: enable only after a successful manual R4 Sud test.
+	option enabled '0'

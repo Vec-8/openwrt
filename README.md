@@ -1,5 +1,7 @@
 ![OpenWrt logo](include/logo.png)
 
+> **Branche expérimentale OTB pour BPI-R4 Sud et BPI-R4 Pro 8X.**  La documentation, les limites et la procédure de compilation sont dans [OTB-R4-PRO-SUD.md](OTB-R4-PRO-SUD.md). Ne flashez pas une image sans console, sauvegarde et test `sysupgrade -T`.
+
 OpenWrt Project is a Linux operating system targeting embedded devices. Instead
 of trying to create a single, static firmware, OpenWrt provides a fully
 writable filesystem with package management. This frees you from the

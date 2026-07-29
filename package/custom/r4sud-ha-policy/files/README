@@ -1,0 +1,17 @@
+Image OTB R4 Sud basee sur OpenWrt main officiel et Linux 6.18.39.
+
+Securites voulues :
+- aucune archive de configuration, aucun mot de passe, aucune cle privee ni certificat embarque ;
+- conservation du reseau existant uniquement par la sauvegarde sysupgrade faite au moment de la migration ;
+- dockerd compile et garde par la presence du montage /srv et de son marqueur ;
+- dockerd refuse de demarrer tant que /srv n'est pas un montage reel et que
+  /srv/.r4sud-ha-storage-ready n'existe pas ;
+- aucune creation automatique de bridge ou de zone firewall Docker ;
+- gestion iptables Docker desactivee par defaut.
+
+La commande r4sud-container-storage-enable --confirm ne doit etre lancee
+uniquement apres verification d'un montage persistant distinct /srv en ext4 ou f2fs.
+
+Profil point d acces / switch : OpenVPN, MWAN3, PBR, SQM et UPnP ne sont pas embarques.
+Les configurations reseau, VLAN, bridge, bond, firewall et WireGuard existantes ne sont jamais modifiees automatiquement.
+- bridge netfilter force a 0 tant que dockerd est desactive afin de proteger le chemin AP/LACP.

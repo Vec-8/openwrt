@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# Configuration commune du canal signé, même si une ancienne configuration a
+# été conservée par sysupgrade.
+uci -q set otb-upgrade.main=channel
+uci -q set otb-upgrade.main.base_url='http://192.0.2.10:8088'
+uci -q set otb-upgrade.main.channel='stable'
+uci -q set otb-upgrade.main.public_key='/etc/otb-upgrade/otb-firmware.pub'
+uci -q set otb-upgrade.main.auto_install='0'
+uci -q set otb-upgrade.main.download_dir='/tmp'
+uci -q commit otb-upgrade
+
+# Minutes distinctes : les deux routeurs ne téléchargent et ne redémarrent
+# jamais simultanément.
+board_name="$(ubus call system board 2>/dev/null | jsonfilter -e '@.board_name' 2>/dev/null)"
+case "$board_name" in
+	bananapi,bpi-r4-pro-8x) minute=23 ;;
+	bananapi,bpi-r4) minute=31 ;;
+	*) exit 0 ;;
+esac
+
+mkdir -p /etc/crontabs
+touch /etc/crontabs/root
+tmp="/tmp/otb-crontab.$$"
+grep -Fv '/usr/sbin/otb-upgrade auto --quiet' /etc/crontabs/root >"$tmp" 2>/dev/null || true
+printf '%s\n' "$minute 4 * * * /usr/sbin/otb-upgrade auto --quiet >/dev/null 2>&1 || true" >>"$tmp"
+cat "$tmp" >/etc/crontabs/root
+rm -f "$tmp"
+chmod 0600 /etc/crontabs/root
+
+# Conserve les deux commandes de diagnostic dans LuCI.
+uci -q batch <<'UCI'
+delete luci_commands.otb_upgrade_check
+set luci_commands.otb_upgrade_check=command
+set luci_commands.otb_upgrade_check.name='Vérifier les mises à jour OTB signées'
+set luci_commands.otb_upgrade_check.command='/usr/sbin/otb-upgrade check'
+set luci_commands.otb_upgrade_check.param='0'
+delete luci_commands.otb_upgrade_test
+set luci_commands.otb_upgrade_test=command
+set luci_commands.otb_upgrade_test.name='Télécharger et tester la mise à jour OTB'
+set luci_commands.otb_upgrade_test.command='/usr/sbin/otb-upgrade test'
+set luci_commands.otb_upgrade_test.param='0'
+commit luci_commands
+UCI
+
+/etc/init.d/cron enable >/dev/null 2>&1 || true
+/etc/init.d/cron restart >/dev/null 2>&1 || true
+exit 0

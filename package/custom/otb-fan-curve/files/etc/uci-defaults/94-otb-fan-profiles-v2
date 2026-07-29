@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Migration non réseau vers les courbes de ventilation par carte.
+uci -q batch <<'EOF'
+set otb-fan.r4pro='fan'
+set otb-fan.r4pro.medium_temp='60000'
+set otb-fan.r4pro.high_temp='68000'
+set otb-fan.r4sud='fan'
+set otb-fan.r4sud.medium_temp='60000'
+set otb-fan.r4sud.high_temp='68000'
+commit otb-fan
+EOF
+
+/etc/init.d/otb-fan-curve enable >/dev/null 2>&1 || exit 1
+/etc/init.d/otb-fan-curve restart >/dev/null 2>&1 || exit 1
+exit 0

@@ -1,0 +1,82 @@
+From: OTB <otb@local>
+Subject: [PATCH] net: ethernet: mtk_eth_soc: serialize shared RX DIM with RSS
+
+The RSS queues execute NAPI concurrently while RX Net DIM is a single shared
+context. Serialize its counters and state machine, and count only real RX IRQs,
+to preserve adaptive coalescing without data races.
+
+---
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.h
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.h
+@@ -1412,7 +1412,8 @@
+  * @page_lock:		Make sure that register operations are atomic
+  * @tx_irq__lock:	Make sure that IRQ register operations are atomic
+  * @rx_irq__lock:	Make sure that IRQ register operations are atomic
+- * @dim_lock:		Make sure that Net DIM operations are atomic
++ * @dim_lock:		Make sure that Net DIM register operations are atomic
++ * @rx_dim_lock:	Serialize the shared RX DIM sampler across RSS NAPI queues
+  * @dummy_dev:		we run 2 netdevs on 1 physical DMA ring and need a
+  *			dummy for NAPI to work
+  * @netdev:		The netdev instances
+@@ -1492,6 +1493,7 @@
+ 	const struct mtk_soc_data	*soc;
+ 
+ 	spinlock_t			dim_lock;
++	spinlock_t			rx_dim_lock;
+ 
+ 	u32				rx_events;
+ 	u32				rx_packets;
+--- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
++++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
+@@ -2422,6 +2422,7 @@
+ 		       struct mtk_eth *eth)
+ {
+ 	struct dim_sample dim_sample = {};
++	unsigned long flags;
+ 	struct mtk_napi *rx_napi = container_of(napi, struct mtk_napi, napi);
+ 	struct mtk_rx_ring *ring = rx_napi->rx_ring;
+ 	bool xdp_flush = false;
+@@ -2638,11 +2639,16 @@
+ 		mtk_update_rx_cpu_idx(eth, ring);
+ 	}
+ 
++	/* RSS NAPI instances run concurrently. Keep the shared Net DIM sample
++	 * coherent instead of racing on counters and the DIM state machine.
++	 */
++	spin_lock_irqsave(&eth->rx_dim_lock, flags);
+ 	eth->rx_packets += done;
+ 	eth->rx_bytes += bytes;
+ 	dim_update_sample(eth->rx_events, eth->rx_packets, eth->rx_bytes,
+ 			  &dim_sample);
+ 	net_dim(&eth->rx_dim, &dim_sample);
++	spin_unlock_irqrestore(&eth->rx_dim_lock, flags);
+ 
+ 	if (xdp_flush)
+ 		xdp_do_flush();
+@@ -3796,12 +3802,16 @@
+ 	struct mtk_napi *rx_napi = priv;
+ 	struct mtk_eth *eth = rx_napi->eth;
+ 	struct mtk_rx_ring *ring = rx_napi->rx_ring;
+-
+-	eth->rx_events++;
++	unsigned long flags;
++
+ 	if (unlikely(!(mtk_r32(eth, eth->soc->reg_map->pdma.irq_status) &
+ 		       mtk_r32(eth, eth->soc->reg_map->pdma.irq_mask) &
+ 		       MTK_RX_DONE_INT(ring->ring_no))))
+ 		return IRQ_NONE;
++
++	spin_lock_irqsave(&eth->rx_dim_lock, flags);
++	eth->rx_events++;
++	spin_unlock_irqrestore(&eth->rx_dim_lock, flags);
+ 
+ 
+ 	if (likely(napi_schedule_prep(&rx_napi->napi))) {
+@@ -5914,6 +5924,7 @@
+ 	spin_lock_init(&eth->tx_irq_lock);
+ 	spin_lock_init(&eth->rx_irq_lock);
+ 	spin_lock_init(&eth->dim_lock);
++	spin_lock_init(&eth->rx_dim_lock);
+ 
+ 	eth->rx_dim.mode = DIM_CQ_PERIOD_MODE_START_FROM_EQE;
+ 	INIT_WORK(&eth->rx_dim.work, mtk_dim_rx);

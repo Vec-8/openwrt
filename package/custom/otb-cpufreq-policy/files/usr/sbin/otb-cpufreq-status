@@ -1,0 +1,22 @@
+#!/bin/sh
+
+if [ -r /tmp/otb-cpufreq.state ]; then
+	cat /tmp/otb-cpufreq.state
+else
+	printf 'state=unknown\n'
+fi
+printf 'temperature_mC=%s\n' "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+	[ -d "$policy" ] || continue
+	printf '%s governor=%s min=%s max=%s current=%s\n' \
+		"${policy##*/}" \
+		"$(cat "$policy/scaling_governor" 2>/dev/null)" \
+		"$(cat "$policy/scaling_min_freq" 2>/dev/null)" \
+		"$(cat "$policy/scaling_max_freq" 2>/dev/null)" \
+		"$(cat "$policy/scaling_cur_freq" 2>/dev/null)"
+	if [ -r "$policy/schedutil/rate_limit_us" ]; then
+		printf '%s schedutil_rate_limit_us=%s\n' \
+			"${policy##*/}" \
+			"$(cat "$policy/schedutil/rate_limit_us" 2>/dev/null)"
+	fi
+done

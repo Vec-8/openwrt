@@ -1,0 +1,619 @@
+#!/usr/bin/env ucode
+
+'use strict';
+
+import * as fs from 'fs';
+import { cursor } from 'uci';
+
+const STATUS_DIR = '/tmp/otb-clients';
+const STATUS_FILE = STATUS_DIR + '/status.json';
+const LOCK_FILE = '/var/lock/otb-clients.lock';
+
+function shellquote(value) {
+	value = value == null ? '' : `${value}`;
+	return "'" + replace(value, "'", "'\\''") + "'";
+}
+
+function bool_value(value) {
+	return value == true || value == 1 || value == '1' || value == 'true';
+}
+
+function number_or(value, fallback) {
+	let n = +value;
+	return n == n ? n : fallback;
+}
+
+function clamp(value, low, high) {
+	return min(high, max(low, value));
+}
+
+function validated_history_dir(path) {
+	path = path || STATUS_DIR;
+	if (!match(path, /^\/(tmp|mnt|srv)(\/[A-Za-z0-9_.-]+)+$/))
+		return STATUS_DIR;
+	return path;
+}
+
+function safe_identifier(value, fallback) {
+	value = value || fallback;
+	return match(value, /^[A-Za-z0-9_.-]+$/) ? value : fallback;
+}
+
+function read_json(path, fallback) {
+	let content = fs.readfile(path);
+	if (content == null)
+		return fallback;
+
+	try { return json(content) ?? fallback; }
+	catch (e) { return fallback; }
+}
+
+function atomic_json(path, data) {
+	let tmp = path + '.tmp';
+	if (!fs.writefile(tmp, sprintf('%.J\n', data)))
+		return false;
+	return fs.rename(tmp, path);
+}
+
+function parse_json_output(output) {
+	let start = index(output || '', '{');
+	if (start < 0)
+		return null;
+
+	try { return json(substr(output, start)); }
+	catch (e) { return null; }
+}
+
+function run_capture(command) {
+	let pipe = fs.popen(command, 'r');
+	if (!pipe)
+		return { ok: false, output: '', error: 'impossible de lancer la commande' };
+
+	let output = pipe.read('all') || '';
+	let rc = pipe.close();
+	return {
+		ok: rc == true || rc == 0,
+		output,
+		error: (rc == true || rc == 0) ? null : `code de sortie ${rc}`
+	};
+}
+
+function quality_from_rssi(rssi) {
+	if (rssi == null)
+		return { label: 'Indisponible', score: 60 };
+	if (rssi >= -55)
+		return { label: 'Excellent', score: 100 };
+	if (rssi >= -67)
+		return { label: 'Bon', score: 85 };
+	if (rssi >= -75)
+		return { label: 'Moyen', score: 65 };
+	if (rssi >= -82)
+		return { label: 'Faible', score: 40 };
+	return { label: 'Critique', score: 15 };
+}
+
+function add_reason(reasons, reason) {
+	if (reason && index(reasons, reason) < 0)
+		push(reasons, reason);
+}
+
+function minimum_positive(a, b) {
+	a = a == null ? null : +a;
+	b = b == null ? null : +b;
+	if (a == null || a <= 0)
+		return b != null && b > 0 ? b : null;
+	if (b == null || b <= 0)
+		return a;
+	return min(a, b);
+}
+
+function score_wifi(client, policy) {
+	policy = policy ?? {};
+	let base = quality_from_rssi(client?.signal_dbm);
+	let score = base.score;
+	let reasons = [];
+	let snr = client?.snr_db;
+	let width = client?.width_mhz;
+	let min_rate = minimum_positive(client?.tx_mbps, client?.rx_mbps);
+	let max_rate = max(number_or(client?.tx_mbps, 0), number_or(client?.rx_mbps, 0));
+	let retry = client?.retry_pct;
+
+	if (client?.signal_dbm != null && client.signal_dbm < -82)
+		add_reason(reasons, 'signal critique');
+	else if (client?.signal_dbm != null && client.signal_dbm < -75)
+		add_reason(reasons, 'signal insuffisant');
+
+	if (snr != null && snr < 10) {
+		score -= 35;
+		add_reason(reasons, 'SNR critique');
+	}
+	else if (snr != null && snr < 20) {
+		score -= 20;
+		add_reason(reasons, 'SNR faible');
+	}
+	else if (snr != null && snr < 25) {
+		score -= 10;
+		add_reason(reasons, 'SNR moyen');
+	}
+
+	if ((client?.band == '5' || client?.band == '6') && width != null && width <= 20) {
+		score -= 15;
+		add_reason(reasons, 'largeur réduite à 20 MHz');
+	}
+
+	if (min_rate != null && min_rate < 10) {
+		score -= 30;
+		add_reason(reasons, 'débit PHY critique');
+	}
+	else if (min_rate != null && min_rate <= 72) {
+		score -= 20;
+		add_reason(reasons, 'débit PHY faible');
+	}
+	else if ((client?.band == '5' || client?.band == '6') && min_rate != null && min_rate < 200) {
+		score -= 8;
+		add_reason(reasons, 'débit PHY réduit');
+	}
+
+	if (min_rate != null && max_rate > 0 && max_rate / min_rate >= 4) {
+		score -= 10;
+		add_reason(reasons, 'débit TX/RX asymétrique');
+	}
+
+	if (retry != null && retry >= 25) {
+		score -= 30;
+		add_reason(reasons, 'retransmissions critiques');
+	}
+	else if (retry != null && retry >= 10) {
+		score -= 15;
+		add_reason(reasons, 'retransmissions élevées');
+	}
+	else if (retry != null && retry >= 5) {
+		score -= 7;
+		add_reason(reasons, 'retransmissions à surveiller');
+	}
+
+	if (number_or(client?.tx_failed_delta, 0) > 0) {
+		score -= min(10, number_or(client.tx_failed_delta, 0));
+		add_reason(reasons, 'échecs TX récents');
+	}
+
+	if (number_or(client?.roams_last_hour, 0) > number_or(policy?.max_roams_per_hour, 5)) {
+		score -= 15;
+		add_reason(reasons, 'roaming trop fréquent');
+	}
+
+	if (policy?.expected_node && client?.node_id != policy.expected_node) {
+		score -= 20;
+		add_reason(reasons, 'AP non attendu');
+	}
+	if (policy?.expected_band && `${client?.band}` != `${policy.expected_band}`) {
+		score -= 15;
+		add_reason(reasons, 'bande non attendue');
+	}
+	if (number_or(policy?.min_width, 0) > 0 && (width == null || width < +policy.min_width)) {
+		score -= 15;
+		add_reason(reasons, `largeur inférieure à ${policy.min_width} MHz`);
+	}
+	if (number_or(policy?.min_nss, 0) > 0 &&
+	    (number_or(client?.nss_tx, 0) < +policy.min_nss || number_or(client?.nss_rx, 0) < +policy.min_nss)) {
+		score -= 15;
+		add_reason(reasons, `MIMO inférieur à ${policy.min_nss}x${policy.min_nss}`);
+	}
+	if (number_or(policy?.min_tx_mbps, 0) > 0 && number_or(client?.tx_mbps, 0) < +policy.min_tx_mbps) {
+		score -= 15;
+		add_reason(reasons, 'TX inférieur à la politique');
+	}
+	if (number_or(policy?.min_rx_mbps, 0) > 0 && number_or(client?.rx_mbps, 0) < +policy.min_rx_mbps) {
+		score -= 15;
+		add_reason(reasons, 'RX inférieur à la politique');
+	}
+	if (number_or(policy?.max_retry_pct, 0) > 0 && retry != null && retry > +policy.max_retry_pct) {
+		score -= 15;
+		add_reason(reasons, 'retransmissions au-dessus de la politique');
+	}
+
+	score = clamp(score, 0, 100);
+	let state;
+	let severity;
+	if (score < 35 || base.label == 'Critique') {
+		state = 'Critique';
+		severity = 'critical';
+	}
+	else if (score < 75 || base.label == 'Faible' || length(reasons) > 0) {
+		state = 'Dégradé';
+		severity = 'degraded';
+	}
+	else if (score >= 90) {
+		state = 'Excellent';
+		severity = 'excellent';
+	}
+	else {
+		state = 'Bon';
+		severity = 'good';
+	}
+
+	client.signal_quality = base.label;
+	client.score = score;
+	client.state = state;
+	client.severity = severity;
+	client.reasons = reasons;
+	return client;
+}
+
+function score_ethernet(client, policy) {
+	policy = policy ?? {};
+	let reasons = [];
+	let score = 100;
+	let speed = number_or(client?.speed_mbps, 0);
+	let port_max = number_or(client?.max_speed_mbps, 0);
+	let configured_min = number_or(policy?.min_eth_speed, 0);
+	/*
+	 * La vitesse maximale du port n'est pas celle du client. Sans politique
+	 * explicite, 1 Gbit/s reste donc normal sur un port 2,5/10 Gbit/s, tandis
+	 * qu'une négociation 10/100 Mbit/s sur un port gigabit est suspecte.
+	 */
+	let expected = configured_min || (port_max > 0 ? min(port_max, max(speed, 1000)) : speed);
+
+	if (!client?.carrier) {
+		score = 0;
+		add_reason(reasons, 'lien Ethernet coupé');
+	}
+	else if (expected > 0 && speed < expected) {
+		let ratio = speed / expected;
+		score = ratio <= 0.1 ? 20 : (ratio <= 0.5 ? 45 : 65);
+		add_reason(reasons, `négociation anormale : ${speed} au lieu de ${expected} Mbit/s`);
+	}
+	else if (client?.duplex && client.duplex != 'full') {
+		score = 35;
+		add_reason(reasons, 'duplex non intégral');
+	}
+
+	client.expected_speed_mbps = expected || null;
+	client.score = score;
+	client.reasons = reasons;
+	if (score < 35) {
+		client.state = 'Critique';
+		client.severity = 'critical';
+	}
+	else if (score < 75) {
+		client.state = 'Dégradé';
+		client.severity = 'degraded';
+	}
+	else {
+		client.state = 'Bon';
+		client.severity = 'good';
+	}
+
+	return client;
+}
+
+function selftest() {
+	let tests = [];
+	let nominal = score_wifi({
+		signal_dbm: -63, snr_db: 32, band: '5', width_mhz: 160,
+		tx_mbps: 866, rx_mbps: 648, retry_pct: 3.2, tx_failed_delta: 0,
+		nss_tx: 2, nss_rx: 2, roams_last_hour: 0
+	}, {});
+	push(tests, { name: 'nominal', ok: nominal.state == 'Bon' || nominal.state == 'Excellent', state: nominal.state });
+
+	let narrow = score_wifi({
+		signal_dbm: -60, snr_db: 32, band: '5', width_mhz: 20,
+		tx_mbps: 72, rx_mbps: 72, retry_pct: 0, tx_failed_delta: 0,
+		nss_tx: 1, nss_rx: 1, roams_last_hour: 0
+	}, {});
+	push(tests, { name: 'rssi_bon_lien_lent', ok: narrow.state == 'Dégradé', state: narrow.state, reasons: narrow.reasons });
+
+	let retries = score_wifi({
+		signal_dbm: -60, snr_db: 32, band: '5', width_mhz: 80,
+		tx_mbps: 600, rx_mbps: 600, retry_pct: 30, tx_failed_delta: 0,
+		nss_tx: 2, nss_rx: 2, roams_last_hour: 0
+	}, {});
+	push(tests, { name: 'retries_eleves', ok: retries.state == 'Dégradé', state: retries.state, reasons: retries.reasons });
+
+	let ethernet = score_ethernet({ carrier: true, speed_mbps: 100, max_speed_mbps: 2500, duplex: 'full' }, {});
+	push(tests, { name: 'ethernet_100_sur_2500', ok: ethernet.state == 'Critique', state: ethernet.state, reasons: ethernet.reasons });
+
+	let ethernet_gigabit = score_ethernet({ carrier: true, speed_mbps: 1000, max_speed_mbps: 2500, duplex: 'full' }, {});
+	push(tests, { name: 'ethernet_1000_sur_2500', ok: ethernet_gigabit.state == 'Bon', state: ethernet_gigabit.state, reasons: ethernet_gigabit.reasons });
+
+	let ok = true;
+	for (let test in tests)
+		if (!test.ok)
+			ok = false;
+
+	printf('%.J\n', { ok, tests });
+	exit(ok ? 0 : 1);
+}
+
+if (ARGV?.[0] == '--selftest')
+	selftest();
+
+let uci = cursor();
+let main = uci.get_all('otb-clients', 'main') ?? {};
+let now = time();
+let stale_after = clamp(number_or(main?.stale_after, 45), 15, 3600);
+let history_limit = clamp(number_or(main?.history_limit, 250), 10, 5000);
+let history_dir = validated_history_dir(main?.history_dir);
+let history_file = history_dir + '/history.json';
+
+fs.mkdir(STATUS_DIR, 0755);
+if (history_dir != STATUS_DIR)
+	fs.mkdir(history_dir, 0755);
+
+let lock = fs.open(LOCK_FILE, 'w');
+if (!lock || !lock.lock('xn')) {
+	warn('otb-clients : une collecte est déjà en cours\n');
+	exit(1);
+}
+
+let previous = read_json(STATUS_FILE, {});
+let history = read_json(history_file, []);
+if (type(history) != 'array')
+	history = [];
+
+let policies = {};
+uci.foreach('otb-clients', 'client', (section) => {
+	let mac = lc(section?.mac || '');
+	if (match(mac, /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/))
+		policies[mac] = section;
+});
+
+let configured_nodes = [];
+uci.foreach('otb-clients', 'node', (section) => push(configured_nodes, section));
+if (!length(configured_nodes))
+	push(configured_nodes, { '.name': 'local', enabled: '1', local: '1', label: 'R4 local', address: '127.0.0.1' });
+
+let previous_nodes = {};
+for (let node in (previous?.nodes ?? []))
+	previous_nodes[node.id] = node;
+
+let nodes = [];
+let snapshots = [];
+
+for (let section in configured_nodes) {
+	let id = safe_identifier(section?.['.name'], 'node');
+	let label = section?.label || id;
+	let enabled = bool_value(section?.enabled);
+	let local = bool_value(section?.local);
+	let previous_node = previous_nodes?.[id] ?? {};
+
+	if (!enabled) {
+		push(nodes, {
+			id, label, address: section?.address || null, local,
+			enabled: false, online: false, configured: false,
+			state: 'disabled', error: 'agent non activé',
+			last_success: previous_node?.last_success ?? null
+		});
+		continue;
+	}
+
+	let command;
+	let configuration_error = null;
+	if (local) {
+		command = '/usr/bin/ucode /usr/sbin/otb-clients-snapshot 2>/dev/null';
+	}
+	else {
+		let address = section?.address;
+		let user = safe_identifier(section?.user, 'root');
+		let identity = section?.identity || '/etc/otb-clients/id_ed25519';
+		if (!match(address || '', /^[A-Za-z0-9:._-]+$/))
+			configuration_error = 'adresse distante invalide';
+		else if (!match(identity, /^\/[A-Za-z0-9_./-]+$/) || !fs.stat(identity))
+			configuration_error = 'clé dédiée absente';
+		else {
+			command = `/usr/bin/ssh -q -T -I 20 -i ${shellquote(identity)} ` +
+				'-o BatchMode=yes -o PasswordAuthentication=no -o StrictHostKeyChecking=yes ' +
+				`${shellquote(user + '@' + address)} /usr/bin/ucode /usr/sbin/otb-clients-snapshot 2>/dev/null`;
+		}
+	}
+
+	if (configuration_error) {
+		push(nodes, {
+			id, label, address: section?.address || null, local,
+			enabled: true, online: false, configured: false,
+			state: 'misconfigured', error: configuration_error,
+			last_success: previous_node?.last_success ?? null
+		});
+		continue;
+	}
+
+	let run = run_capture(command);
+	let snapshot = run.ok ? parse_json_output(run.output) : null;
+	if (!snapshot) {
+		push(nodes, {
+			id, label, address: section?.address || null, local,
+			enabled: true, online: false, configured: true,
+			state: 'offline', error: run.error || 'collecte invalide',
+			last_success: previous_node?.last_success ?? null
+		});
+		continue;
+	}
+
+	snapshot.node.id = id;
+	snapshot.node.label = label;
+	for (let client in (snapshot?.wifi ?? [])) {
+		client.node_id = id;
+		client.node_label = label;
+		client.ap = label;
+	}
+	for (let client in (snapshot?.ethernet ?? [])) {
+		client.node_id = id;
+		client.node_label = label;
+		client.ap = label;
+	}
+
+	push(snapshots, snapshot);
+	push(nodes, {
+		id, label, hostname: snapshot?.node?.hostname || null,
+		address: section?.address || null, local,
+		enabled: true, online: true, configured: true,
+		state: 'online', error: null,
+		collected_at: snapshot?.collected_at || now,
+		last_success: snapshot?.collected_at || now,
+		wifi_count: length(snapshot?.wifi ?? []),
+		ethernet_count: length(snapshot?.ethernet ?? [])
+	});
+}
+
+let raw_wifi = [];
+let raw_ethernet = [];
+for (let snapshot in snapshots) {
+	for (let client in (snapshot?.wifi ?? []))
+		push(raw_wifi, client);
+	for (let client in (snapshot?.ethernet ?? []))
+		push(raw_ethernet, client);
+}
+
+let selected_wifi = {};
+for (let client in raw_wifi) {
+	let mac = lc(client?.mac || '');
+	if (!mac)
+		continue;
+	client.mac = mac;
+	let current = selected_wifi[mac];
+	if (!current || number_or(client?.inactive_ms, 999999999) < number_or(current?.inactive_ms, 999999999))
+		selected_wifi[mac] = client;
+}
+
+let previous_wifi = {};
+for (let client in (previous?.wifi ?? []))
+	if (client?.mac)
+		previous_wifi[lc(client.mac)] = client;
+
+let online_nodes = {};
+for (let node in nodes)
+	if (node.online)
+		online_nodes[node.id] = true;
+
+for (let mac, old in previous_wifi) {
+	if (selected_wifi[mac] || online_nodes[old?.node_id])
+		continue;
+	old.stale = true;
+	old.age_seconds = max(0, now - number_or(previous?.collected_at, now));
+	selected_wifi[mac] = old;
+}
+
+for (let mac, client in selected_wifi) {
+	let old = previous_wifi?.[mac];
+	client.stale = bool_value(client?.stale);
+	client.age_seconds = client.stale ? number_or(client?.age_seconds, now - number_or(previous?.collected_at, now)) : 0;
+	client.retry_pct = null;
+	client.tx_failed_delta = null;
+
+	if (!client.stale && old && !old?.stale && old?.node_id == client?.node_id && old?.interface == client?.interface) {
+		let delta_retry = number_or(client?.tx_retries, 0) - number_or(old?.tx_retries, 0);
+		let delta_packets = number_or(client?.tx_packets, 0) - number_or(old?.tx_packets, 0);
+		let delta_failed = number_or(client?.tx_failed, 0) - number_or(old?.tx_failed, 0);
+		if (delta_retry >= 0 && delta_packets >= 0 && delta_retry + delta_packets > 0)
+			client.retry_pct = 100.0 * delta_retry / (delta_retry + delta_packets);
+		if (delta_failed >= 0)
+			client.tx_failed_delta = delta_failed;
+	}
+
+	let old_ap = old ? `${old?.node_id}/${old?.interface}` : null;
+	let new_ap = `${client?.node_id}/${client?.interface}`;
+	if (!client.stale && old && !old?.stale && old_ap != new_ap &&
+	    now - number_or(previous?.collected_at, 0) <= stale_after * 2) {
+		push(history, {
+			timestamp: now,
+			mac,
+			ssid: client?.ssid || old?.ssid || null,
+			from_node: old?.node_id,
+			from_label: old?.node_label,
+			from_interface: old?.interface,
+			to_node: client?.node_id,
+			to_label: client?.node_label,
+			to_interface: client?.interface
+		});
+	}
+}
+
+while (length(history) > history_limit)
+	shift(history);
+
+for (let mac, client in selected_wifi) {
+	let last = null;
+	let roams_last_hour = 0;
+	for (let i = length(history) - 1; i >= 0; i--) {
+		let event = history[i];
+		if (lc(event?.mac || '') != mac)
+			continue;
+		if (!last)
+			last = event;
+		if (now - number_or(event?.timestamp, 0) <= 3600)
+			roams_last_hour++;
+	}
+	client.last_roaming = last;
+	client.roams_last_hour = roams_last_hour;
+	let policy = policies?.[mac] ?? {};
+	if (policy?.label)
+		client.display_name = policy.label;
+	score_wifi(client, policy);
+}
+
+let selected_ethernet = {};
+for (let client in raw_ethernet) {
+	let mac = lc(client?.mac || '');
+	if (!mac)
+		continue;
+	client.mac = mac;
+	selected_ethernet[`${client?.node_id}|${mac}`] = client;
+}
+
+for (let old in (previous?.ethernet ?? [])) {
+	let key = `${old?.node_id}|${lc(old?.mac || '')}`;
+	if (!old?.mac || selected_ethernet[key] || online_nodes[old?.node_id])
+		continue;
+	old.stale = true;
+	old.age_seconds = max(0, now - number_or(previous?.collected_at, now));
+	selected_ethernet[key] = old;
+}
+
+for (let key, client in selected_ethernet) {
+	client.stale = bool_value(client?.stale);
+	client.age_seconds = client.stale ? number_or(client?.age_seconds, now - number_or(previous?.collected_at, now)) : 0;
+	let policy = policies?.[lc(client?.mac || '')] ?? {};
+	if (policy?.label)
+		client.display_name = policy.label;
+	score_ethernet(client, policy);
+}
+
+let wifi = [];
+for (let mac, client in selected_wifi)
+	push(wifi, client);
+let ethernet = [];
+for (let key, client in selected_ethernet)
+	push(ethernet, client);
+
+let result = {
+	schema: 1,
+	version: '1.0.0',
+	collected_at: now,
+	stale_after,
+	nodes,
+	wifi,
+	ethernet,
+	history,
+	summary: {
+		wifi: length(wifi),
+		ethernet: length(ethernet),
+		nodes_online: length(filter(nodes, (node) => node.online)),
+		nodes_total: length(nodes),
+		degraded: length(filter(wifi, (client) => client.severity == 'degraded')) +
+			length(filter(ethernet, (client) => client.severity == 'degraded')),
+		critical: length(filter(wifi, (client) => client.severity == 'critical')) +
+			length(filter(ethernet, (client) => client.severity == 'critical'))
+	}
+};
+
+atomic_json(history_file, history);
+if (!atomic_json(STATUS_FILE, result)) {
+	warn('otb-clients : impossible d’écrire le statut\n');
+	lock.lock('u');
+	lock.close();
+	exit(1);
+}
+
+lock.lock('u');
+lock.close();
+printf('%.J\n', result);

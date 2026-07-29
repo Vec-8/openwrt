@@ -737,8 +737,60 @@ define Device/bananapi_bpi-r4
   DEVICE_DTS := mt7988a-bananapi-bpi-r4
   DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4
   $(call Device/bananapi_bpi-r4-common)
+  # OTB R4 Sud: preserve the module-specific EEPROM/MAC/MLO data.  The
+  # generic BE14 overlay contains a full EEPROM dump from another card; the
+  # mt76 zero-field fix supplies only missing TX-power fields instead.
+  DEVICE_DTS_OVERLAY := mt7988a-bananapi-bpi-r4-emmc \
+	mt7988a-bananapi-bpi-r4-rtc \
+	mt7988a-bananapi-bpi-r4-sd
+  DEVICE_PACKAGES += bridger r4sud-ha-policy otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mt7988-rss-tuning otb-mt7988-hwlro \
+	-openvpn-openssl -openvpn-easy-rsa -luci-proto-openvpn \
+	-mwan3 -luci-app-mwan3 -pbr -luci-app-pbr \
+	-sqm-scripts -luci-app-sqm -miniupnpd-nftables -luci-app-upnp \
+	-modemmanager -luci-proto-modemmanager -uqmi -umbim -qmi-utils -wwan \
+	-luci-proto-qmi -luci-proto-mbim -libqmi -libmbim \
+	-kmod-usb-net-qmi-wwan -kmod-usb-net-cdc-mbim -kmod-usb-net-cdc-ncm
+  # The HA/container profile makes the per-device initramfs larger than the
+  # fixed 44 MiB recovery slot in the combined SD-card installer layout.
+  # Keep the sysupgrade and individual bootloader artifacts used in service,
+  # but do not generate the two unrelated combined SD-card installer images.
+  ARTIFACTS := \
+	emmc-gpt.bin emmc-preloader.bin emmc-bl31-uboot.fip \
+	emmc-preloader-8g.bin snand-preloader-8g.bin \
+	snand-preloader.bin snand-bl31-uboot.fip
 endef
 TARGET_DEVICES += bananapi_bpi-r4
+
+define Device/bananapi_bpi-r4-pro-8x
+  DEVICE_VENDOR := Bananapi
+  DEVICE_MODEL := BPI-R4 Pro 8X
+  DEVICE_DTS := mt7988a-bananapi-bpi-r4-pro-8x
+  DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-pro-8x
+  DEVICE_DTS_DIR := $(DTS_DIR)/
+  DEVICE_DTS_LOADADDR := 0x45f00000
+  DEVICE_DTS_OVERLAY := mt7988a-bananapi-bpi-r4-pro-8x-emmc \
+	mt7988a-bananapi-bpi-r4-pro-8x-rtc \
+	mt7988a-bananapi-bpi-r4-pro-8x-sd
+  DEVICE_DTC_FLAGS := --pad 4096
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-i2c-mux-pca954x \
+	kmod-gpio-pca953x kmod-eeprom-at24 kmod-mt7996-firmware \
+	kmod-mt7996-233-firmware kmod-rtc-pcf8563 kmod-sfp \
+	kmod-dsa-mxl862xx kmod-phy-aeonsemi-as21xxx kmod-usb3 \
+	e2fsprogs f2fsck mkf2fs mt7988-wo-firmware \
+	r4pro-bonding-early bridger otb-wifi-cahier otb-localization-fr otb-cpufreq-policy otb-fan-curve otb-mt7988-rss-tuning otb-mt7988-hwlro
+  SUPPORTED_DEVICES += bananapi,bpi-r4-pro-8x
+  IMAGES := sysupgrade.itb
+  KERNEL_LOADADDR := 0x46000000
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  IMAGE_SIZE := $$(shell expr 64 + $$(CONFIG_TARGET_ROOTFS_PARTSIZE))m
+  KERNEL := kernel-bin | gzip
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.itb := append-kernel | \
+	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-with-rootfs | \
+	pad-rootfs | append-metadata
+endef
+TARGET_DEVICES += bananapi_bpi-r4-pro-8x
 
 define Device/bananapi_bpi-r4-poe
   DEVICE_MODEL := BPi-R4 2.5GE

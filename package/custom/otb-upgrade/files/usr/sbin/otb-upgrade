@@ -1,0 +1,185 @@
+#!/bin/sh
+
+PROG=${0##*/}
+ACTION=${1:-check}
+[ "$#" -eq 0 ] || shift
+QUIET=0
+CONFIRM=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --quiet) QUIET=1 ;;
+        --confirm) CONFIRM=1 ;;
+        -h|--help)
+            cat <<USAGE
+Usage: $PROG {check|download|test|install|auto} [--quiet] [--confirm]
+USAGE
+            exit 0
+            ;;
+        *) printf '%s: option inconnue: %s\n' "$PROG" "$1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+case "$ACTION" in
+    check|download|test|install|auto) ;;
+    *) printf '%s: action inconnue: %s\n' "$PROG" "$ACTION" >&2; exit 2 ;;
+esac
+
+say() {
+    [ "$QUIET" -eq 1 ] || printf '%s\n' "$*"
+}
+log_notice() {
+    logger -t otb-upgrade "$*" 2>/dev/null || true
+    say "$*"
+}
+die() {
+    code=$1
+    shift
+    logger -t otb-upgrade "ERREUR: $*" 2>/dev/null || true
+    printf 'ERREUR: %s\n' "$*" >&2
+    exit "$code"
+}
+need() {
+    command -v "$1" >/dev/null 2>&1 || die 3 "commande absente: $1"
+}
+
+need ubus
+need jsonfilter
+need uclient-fetch
+need usign
+need sha256sum
+need sysupgrade
+
+[ -r /lib/functions.sh ] || die 3 '/lib/functions.sh absent'
+. /lib/functions.sh
+config_load otb-upgrade
+config_get base_url main base_url 'http://192.0.2.10:8088'
+config_get channel main channel 'stable'
+config_get public_key main public_key '/etc/otb-upgrade/otb-firmware.pub'
+config_get auto_install main auto_install '0'
+config_get download_dir main download_dir '/tmp'
+
+[ -r "$public_key" ] || die 3 "cle publique absente: $public_key"
+base_url=${base_url%/}
+
+BOARD_JSON=$(ubus call system board 2>/dev/null) || die 4 'ubus system board a echoue'
+BOARD_NAME=$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.board_name')
+CURRENT_DIST=$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.release.distribution')
+CURRENT_VERSION=$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.release.version')
+CURRENT_REVISION=$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.release.revision')
+
+case "$BOARD_NAME" in
+    'bananapi,bpi-r4-pro-8x') DEVICE=r4pro ;;
+    'bananapi,bpi-r4') DEVICE=r4sud ;;
+    *) die 5 "materiel non pris en charge: $BOARD_NAME" ;;
+esac
+
+CURRENT_SEQUENCE=0
+CURRENT_OTB_BUILD='non-OTB'
+if [ -r /etc/otb-release ]; then
+    # Fichier fourni par l'image et non modifiable par le serveur.
+    . /etc/otb-release
+    CURRENT_SEQUENCE=${OTB_SEQUENCE:-0}
+    CURRENT_OTB_BUILD=${OTB_BUILD_ID:-inconnu}
+fi
+case "$CURRENT_SEQUENCE" in *[!0-9]*|'') die 6 'sequence locale OTB invalide' ;; esac
+
+TMPDIR=$(mktemp -d /tmp/otb-upgrade.XXXXXX) || die 7 'impossible de creer le repertoire temporaire'
+trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+MANIFEST=$TMPDIR/manifest.json
+SIGNATURE=$TMPDIR/manifest.json.sig
+BASE_PATH=$base_url/$DEVICE/$channel
+
+uclient-fetch -q -O "$MANIFEST" "$BASE_PATH/manifest.json" || die 8 'telechargement du manifeste impossible'
+uclient-fetch -q -O "$SIGNATURE" "$BASE_PATH/manifest.json.sig" || die 8 'telechargement de la signature impossible'
+usign -V -p "$public_key" -m "$MANIFEST" -x "$SIGNATURE" >/dev/null 2>&1 || die 9 'signature du manifeste invalide'
+
+field() { jsonfilter -i "$MANIFEST" -e "@.$1"; }
+SCHEMA=$(field schema)
+REMOTE_BOARD=$(field board_name)
+REMOTE_SEQUENCE=$(field sequence)
+REMOTE_BUILD=$(field build_id)
+REMOTE_DIST=$(field distribution)
+REMOTE_VERSION=$(field version)
+REMOTE_REVISION=$(field revision)
+REMOTE_FILE=$(field filename)
+REMOTE_SIZE=$(field size)
+REMOTE_SHA256=$(field sha256)
+KEEP_CONFIG=$(field keep_config)
+
+[ "$SCHEMA" = 1 ] || die 10 "schema de manifeste non pris en charge: $SCHEMA"
+[ "$REMOTE_BOARD" = "$BOARD_NAME" ] || die 11 "image pour $REMOTE_BOARD, routeur $BOARD_NAME"
+case "$REMOTE_SEQUENCE" in *[!0-9]*|'') die 12 'sequence distante invalide' ;; esac
+case "$REMOTE_SIZE" in *[!0-9]*|'') die 12 'taille distante invalide' ;; esac
+[ "${#REMOTE_SHA256}" -eq 64 ] || die 12 'longueur SHA-256 distante invalide'
+case "$REMOTE_SHA256" in *[!0-9a-f]*) die 12 'SHA-256 distant invalide' ;; esac
+case "$REMOTE_FILE" in ''|*/*|*..*) die 12 'nom de fichier distant invalide' ;; esac
+
+if [ "$REMOTE_SEQUENCE" -le "$CURRENT_SEQUENCE" ]; then
+    log_notice "Aucune mise a jour OTB: local=$CURRENT_OTB_BUILD ($CURRENT_SEQUENCE), serveur=$REMOTE_BUILD ($REMOTE_SEQUENCE)."
+    exit 0
+fi
+
+log_notice "Mise a jour OTB disponible: $CURRENT_DIST $CURRENT_VERSION $CURRENT_REVISION / $CURRENT_OTB_BUILD -> $REMOTE_DIST $REMOTE_VERSION $REMOTE_REVISION / $REMOTE_BUILD."
+
+if [ "$ACTION" = check ]; then
+    exit 10
+fi
+if [ "$ACTION" = auto ] && [ "$auto_install" != 1 ]; then
+    log_notice "Installation automatique desactivee; controle seulement."
+    exit 10
+fi
+if [ "$ACTION" = auto ]; then
+    ACTION=install
+    CONFIRM=1
+fi
+
+mkdir -p "$download_dir" || die 13 "repertoire de telechargement inaccessible: $download_dir"
+IMAGE=$download_dir/$REMOTE_FILE
+PART=$IMAGE.part.$$
+rm -f "$PART"
+uclient-fetch -q -O "$PART" "$BASE_PATH/$REMOTE_FILE" || die 14 'telechargement du firmware impossible'
+ACTUAL_SIZE=$(wc -c < "$PART" | tr -d ' ')
+[ "$ACTUAL_SIZE" = "$REMOTE_SIZE" ] || die 15 "taille invalide: $ACTUAL_SIZE au lieu de $REMOTE_SIZE"
+ACTUAL_SHA256=$(sha256sum "$PART" | cut -d' ' -f1)
+[ "$ACTUAL_SHA256" = "$REMOTE_SHA256" ] || die 16 'SHA-256 du firmware invalide'
+mv -f "$PART" "$IMAGE"
+log_notice "Firmware verifie: $IMAGE"
+
+if [ "$ACTION" = download ]; then
+    exit 10
+fi
+TEST_MODE='avec conservation de la configuration'
+if { [ "$KEEP_CONFIG" != true ] && [ "$KEEP_CONFIG" != 1 ]; } ||
+   [ "$CURRENT_DIST" != OpenWrt ] || [ "$CURRENT_SEQUENCE" -eq 0 ]; then
+    TEST_MODE='propre sans conservation de la configuration'
+    sysupgrade -T -n "$IMAGE" >/tmp/otb-upgrade-sysupgrade-test.log 2>&1 || {
+        cat /tmp/otb-upgrade-sysupgrade-test.log >&2
+        die 17 'sysupgrade -T -n refuse cette image'
+    }
+else
+    sysupgrade -T "$IMAGE" >/tmp/otb-upgrade-sysupgrade-test.log 2>&1 || {
+        cat /tmp/otb-upgrade-sysupgrade-test.log >&2
+        die 17 'sysupgrade -T refuse cette image'
+    }
+fi
+log_notice "Test sysupgrade reussi ($TEST_MODE)."
+
+if [ "$ACTION" = test ]; then
+    exit 0
+fi
+
+[ "$ACTION" = install ] || die 2 'etat interne invalide'
+[ "$CONFIRM" -eq 1 ] || die 18 "installation refusee sans --confirm"
+[ "$CURRENT_DIST" = OpenWrt ] || die 19 "migration $CURRENT_DIST vers OpenWrt interdite en automatique"
+[ "$CURRENT_SEQUENCE" -gt 0 ] || die 19 'installation automatique reservee aux images OTB deja installees'
+[ "$REMOTE_DIST" = OpenWrt ] || die 19 "distribution distante interdite: $REMOTE_DIST"
+
+sync
+if [ "$KEEP_CONFIG" = true ] || [ "$KEEP_CONFIG" = 1 ]; then
+    log_notice 'Installation avec conservation de la configuration; redemarrage imminent.'
+    exec sysupgrade "$IMAGE"
+fi
+log_notice 'Installation propre sans conservation de la configuration; redemarrage imminent.'
+exec sysupgrade -n "$IMAGE"
