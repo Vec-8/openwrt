@@ -1,0 +1,15 @@
+# PROPOSITION DE TEST TEMPORAIRE — NE PAS EXÉCUTER SANS SAUVEGARDE ET ACCORD.
+# Ces commandes modifient deux masques globaux partagés par tous les trunks.
+# Capturer d'abord toutes les sorties du fichier stock-diag-readonly.txt.
+# Remplacer <TRUNK_ID> par chaque groupe réellement utilisé.
+
+trunk set distribute-algorithm parameter type l2 algorithm-id 0 dst-mac src-mac
+trunk set distribute-algorithm parameter type l3 algorithm-id 1 dst-ip dst-l4-port src-ip src-l4-port
+trunk set distribute-algorithm bind trunk-group <TRUNK_ID> type l2 algo-id 0
+trunk set distribute-algorithm bind trunk-group <TRUNK_ID> type ipv4 algo-id 1
+trunk set distribute-algorithm bind trunk-group <TRUNK_ID> type ipv6 algo-id 1
+
+# Refaire ensuite tous les GET et les tests iperf3 symétriques.
+# La persistance après redémarrage n'est pas supposée.
+# Le retour arrière doit réappliquer les valeurs GET capturées, pas des valeurs
+# génériques copiées dans ce fichier.

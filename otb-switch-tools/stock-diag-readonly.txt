@@ -1,0 +1,11 @@
+# Commandes GET uniquement pour le binaire diag du firmware SODOLA 1.1.1.31.
+# Ne modifient pas les masques. Remplacer <TRUNK_ID> après inventaire réel.
+
+trunk get distribute-algorithm parameter type l2 algorithm-id 0
+trunk get distribute-algorithm parameter type l3 algorithm-id 0
+trunk get distribute-algorithm parameter type l2 algorithm-id 1
+trunk get distribute-algorithm parameter type l3 algorithm-id 1
+trunk get distribute-algorithm shift
+trunk get distribute-algorithm bind trunk-group <TRUNK_ID> type l2
+trunk get distribute-algorithm bind trunk-group <TRUNK_ID> type ipv4
+trunk get distribute-algorithm bind trunk-group <TRUNK_ID> type ipv6
