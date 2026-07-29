@@ -2372,6 +2372,7 @@ static bool rtldsa_83xx_lag_can_offload(struct dsa_switch *ds,
 					struct net_device *lag,
 					struct netdev_lag_upper_info *info)
 {
+	struct rtl838x_switch_priv *priv = ds->priv;
 	int id;
 
 	id = dsa_lag_id(ds->dst, lag);
@@ -2381,10 +2382,13 @@ static bool rtldsa_83xx_lag_can_offload(struct dsa_switch *ds,
 	if (info->tx_type != NETDEV_LAG_TX_TYPE_HASH)
 		return false;
 
-	if (info->hash_type != NETDEV_LAG_HASH_L2 && info->hash_type != NETDEV_LAG_HASH_L23)
-		return false;
+	if (info->hash_type == NETDEV_LAG_HASH_L2)
+		return true;
 
-	return true;
+	if (priv->lag_hash_l34)
+		return info->hash_type == NETDEV_LAG_HASH_L34;
+
+	return info->hash_type == NETDEV_LAG_HASH_L23;
 }
 
 static int rtldsa_port_lag_change(struct dsa_switch *ds, int port)

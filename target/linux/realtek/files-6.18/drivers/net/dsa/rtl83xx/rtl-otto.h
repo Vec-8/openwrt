@@ -1453,6 +1453,7 @@ struct rtl838x_switch_priv {
 	u64 lagmembers;
 	struct workqueue_struct *wq;
 	bool eee_enabled;
+	bool lag_hash_l34;
 	unsigned long mc_group_bm[MAX_MC_GROUPS >> 5];
 	struct rhashtable tc_ht;
 	unsigned long pie_use_bm[MAX_PIE_ENTRIES >> 5];

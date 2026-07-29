@@ -154,6 +154,9 @@
 };
 
 &switch0 {
+	/* Opt in to L4-aware distribution for parallel TCP/UDP flows. */
+	realtek,lag-hash-layer3-4;
+
 	ethernet-ports {
 		#address-cells = <1>;
 		#size-cells = <0>;

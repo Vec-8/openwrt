@@ -10,6 +10,7 @@
 #include <linux/if_vlan.h>
 #include <linux/inetdevice.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/rhashtable.h>
 #include <linux/of_net.h>
 #include <asm/mach-rtl-otto/mach-rtl-otto.h>
@@ -563,8 +564,15 @@ static int rtldsa_93xx_lag_set_group2ports(struct rtl838x_switch_priv *priv, int
 			e.l2_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L2;
 			e.ip4_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L2;
 			e.ip6_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L2;
-		} else if (info->hash_type == NETDEV_LAG_HASH_L23) {
+		} else if (info->hash_type == NETDEV_LAG_HASH_L23 &&
+			   !priv->lag_hash_l34) {
 			e.l2_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L23;
+			e.ip4_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L23;
+			e.ip6_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L23;
+		} else if (info->hash_type == NETDEV_LAG_HASH_L34 &&
+			   priv->lag_hash_l34) {
+			/* Keep non-IP traffic on the L2 slot. */
+			e.l2_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L2;
 			e.ip4_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L23;
 			e.ip6_hash_mask_idx = RTL93XX_HASH_MASK_INDEX_L23;
 		} else {
@@ -918,6 +926,10 @@ static int rtl83xx_sw_probe(struct platform_device *pdev)
 		return err;
 
 	priv->family_id = soc_info.family;
+	priv->lag_hash_l34 =
+		(priv->family_id == RTL9300_FAMILY_ID ||
+		 priv->family_id == RTL9310_FAMILY_ID) &&
+		device_property_read_bool(dev, "realtek,lag-hash-layer3-4");
 	sw_w32(0, priv->r->spanning_tree_ctrl);
 	priv->irq_mask = GENMASK_ULL(priv->r->cpu_port - 1, 0);
 
@@ -1027,12 +1039,26 @@ void rtldsa_93xx_lag_switch_init(struct rtl838x_switch_priv *priv)
 		   TRUNK_DISTRIBUTION_ALGO_DMAC_BIT;
 	priv->r->lag_set_distribution_algorithm(priv, 0, RTL93XX_HASH_MASK_INDEX_L2, algomask);
 
-	/* Setup NETDEV_LAG_HASH_L23 on slot 1 */
-	algomask = TRUNK_DISTRIBUTION_ALGO_SMAC_BIT |
-		   TRUNK_DISTRIBUTION_ALGO_DMAC_BIT |
-		   TRUNK_DISTRIBUTION_ALGO_SIP_BIT |
-		   TRUNK_DISTRIBUTION_ALGO_DIP_BIT;
-	priv->r->lag_set_distribution_algorithm(priv, 0, RTL93XX_HASH_MASK_INDEX_L23, algomask);
+	if (priv->lag_hash_l34) {
+		/*
+		 * Slot 1 is shared by all LAGs. Layer 3+4 is opt-in because
+		 * Linux documents possible reordering for fragmented traffic.
+		 */
+		algomask = TRUNK_DISTRIBUTION_ALGO_SIP_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_DIP_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_SRC_L4PORT_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_DST_L4PORT_BIT;
+		dev_info(priv->dev,
+			 "LAG hash slot 1: opt-in layer3+4 distribution enabled\n");
+	} else {
+		/* Setup NETDEV_LAG_HASH_L23 on slot 1 */
+		algomask = TRUNK_DISTRIBUTION_ALGO_SMAC_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_DMAC_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_SIP_BIT |
+			   TRUNK_DISTRIBUTION_ALGO_DIP_BIT;
+	}
+	priv->r->lag_set_distribution_algorithm(priv, 0,
+					RTL93XX_HASH_MASK_INDEX_L23, algomask);
 }
 
 static void rtl83xx_sw_remove(struct platform_device *pdev)

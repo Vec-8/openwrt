@@ -1,0 +1,33 @@
+From: OTB R4 Development <otb-r4@users.noreply.github.com>
+Date: Wed, 29 Jul 2026 13:05:00 +0200
+Subject: [PATCH] dt-bindings: net: realtek: document layer3+4 LAG hash opt-in
+
+The RTL930x has two global trunk distribution masks. Document an opt-in
+property for boards which reserve mask 1 for source/destination IP and L4
+ports instead of the default layer2+3 tuple.
+
+This lets the DSA driver advertise only the hash policy actually programmed
+in hardware and keeps the existing behaviour on all other boards.
+
+Signed-off-by: OTB R4 Development <otb-r4@users.noreply.github.com>
+---
+ .../bindings/net/realtek,rtl9301-switch.yaml      | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+--- a/Documentation/devicetree/bindings/net/realtek,rtl9301-switch.yaml
++++ b/Documentation/devicetree/bindings/net/realtek,rtl9301-switch.yaml
+@@ -44,6 +44,14 @@ properties:
+   ethernet-ports:
+     type: object
+ 
++  realtek,lag-hash-layer3-4:
++    type: boolean
++    description:
++      Reserve trunk distribution mask 1 for source and destination IP
++      addresses plus source and destination layer 4 ports. When enabled,
++      the DSA driver accepts layer2 or layer3+4 bonding policies instead of
++      the default layer2 or layer2+3 policies.
++
+ patternProperties:
+   'reboot@[0-9a-f]+$':
+     $ref: /schemas/power/reset/syscon-reboot.yaml#
