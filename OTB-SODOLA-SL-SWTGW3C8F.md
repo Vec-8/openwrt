@@ -171,7 +171,9 @@ La configuration de référence sélectionne :
 - `kmod-bonding` ;
 - `luci-ssl` et `luci-mod-network` ;
 - `ip-full`, `ip-bridge`, `ethtool-full`, `iperf3`, `tcpdump-mini` ;
-- `lldpd` et `luci-app-lldpd`.
+- `lldpd` et `luci-app-lldpd` ;
+- le thème Argon et sa configuration ;
+- la vue OTB unifiée des ports, bonds et VLAN effectifs.
 
 LuCI actuel configure le bonding comme un périphérique réseau natif. Son
 éditeur expose notamment `802.3ad`, `layer3+4`, `lacp_rate`, `min_links` et
@@ -194,6 +196,11 @@ modifier les seuils matériels. Les optiques sont interrogées en lecture seule
 via `ethtool` et aucune nouvelle politique d'arrêt thermique ne leur est
 appliquée. Une optique sans DOM est explicitement signalée.
 
+La vue globale des ports lit `bridge -j vlan show` et `/proc/net/bonding`. Elle
+affiche les VLAN taggés, non taggés et PVID réellement programmés. Pour chaque
+membre physique d’un LAG, elle remonte explicitement les VLAN hérités du bond
+logique sans modifier la configuration réseau.
+
 ## Compilation
 
 ```sh
@@ -211,8 +218,8 @@ Le build doit produire au minimum une image `factory.bix` pour
 2. magic BIX `0x83800000` ;
 3. CRC U-Boot valides ;
 4. modèle/compatible du DTB SODOLA ;
-5. présence de `kmod-bonding`, `ethtool-full`, `ip-bridge`, du paquet LuCI OTB
-   et de sa traduction française dans le manifeste ;
+5. présence de `kmod-bonding`, `ethtool-full`, `ip-bridge`, des paquets LuCI
+   OTB, d’Argon et de la traduction française dans le manifeste ;
 6. absence de secrets et de configuration OTB privée dans l'image.
 
 ## Validation prévue sur matériel
