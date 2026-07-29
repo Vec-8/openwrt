@@ -12,7 +12,7 @@ This does not alter networking configuration, RSS hashing or Wi-Fi.
  #define MTK_DMA_SIZE(x)		(SZ_##x)
  #define MTK_FQ_DMA_HEAD		32
  #define MTK_FQ_DMA_LENGTH	2048
-+#define MTK_NAPI_WEIGHT		64
++#define MTK_NAPI_WEIGHT		256
  #define MTK_RX_ETH_HLEN		(ETH_HLEN + ETH_FCS_LEN)
  #define MTK_RX_HLEN		(NET_SKB_PAD + MTK_RX_ETH_HLEN + NET_IP_ALIGN)
  #define MTK_DMA_DUMMY_DESC	0xffffffff
