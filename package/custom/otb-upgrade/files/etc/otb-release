@@ -6,8 +6,8 @@ fi
 case "${BOARD_NAME:-}" in
 	bananapi,bpi-r4-pro-8x)
 		OTB_DEVICE='r4pro'
-		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-r2-rpsf-rfs0-netprefetch-napi256-dimlock-hwlro-toggle-rxqfix-thermal-shared-no-mxl-pause-luci-fr-wan-heal-v1-20260729'
-		OTB_SEQUENCE='2026072933'
+		OTB_BUILD_ID='r4pro-openwrt-main-6.18.39-fr-be14-mt7996-stock-lifecycle-mlo-preserve-27-27-27-rss-r2-rpsf-rfs0-netprefetch-napi256-dim-owner-hwlro-toggle-rxqfix-thermal-shared-no-mxl-pause-luci-ports-fr-wan-heal-aeonsemi-20260729'
+		OTB_SEQUENCE='2026072937'
 		;;
 	bananapi,bpi-r4)
 		OTB_DEVICE='r4sud'
