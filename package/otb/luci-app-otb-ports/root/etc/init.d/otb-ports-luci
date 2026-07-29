@@ -3,8 +3,6 @@
 START=99
 STOP=01
 
-USE_PROCD=0
-
 SOURCE='/usr/share/otb-luci-overrides/29_ports.js'
 TARGET='/www/luci-static/resources/view/status/include/29_ports.js'
 BACKUP='/www/luci-static/resources/view/status/include/29_ports.js.pre-otb-ports'
