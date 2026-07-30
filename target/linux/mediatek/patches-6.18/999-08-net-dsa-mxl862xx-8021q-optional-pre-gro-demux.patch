@@ -1,0 +1,186 @@
+diff --git a/net/dsa/dsa.c b/net/dsa/dsa.c
+index 0505e90..5919d34 100644
+--- a/net/dsa/dsa.c
++++ b/net/dsa/dsa.c
+@@ -1797,6 +1797,7 @@ static int __init dsa_init_module(void)
+ 		goto register_notifier_fail;
+ 
+ 	dev_add_pack(&dsa_pack_type);
++	dev_add_offload(&dsa_pack_offload);
+ 
+ 	rc = rtnl_link_register(&dsa_link_ops);
+ 	if (rc)
+@@ -1808,6 +1809,7 @@ static int __init dsa_init_module(void)
+ 
+ netlink_register_fail:
+ 	dsa_user_unregister_notifier();
++	dev_remove_offload(&dsa_pack_offload);
+ 	dev_remove_pack(&dsa_pack_type);
+ register_notifier_fail:
+ 	destroy_workqueue(dsa_owq);
+@@ -1823,6 +1825,7 @@ static void __exit dsa_cleanup_module(void)
+ 	rtnl_link_unregister(&dsa_link_ops);
+ 
+ 	dsa_user_unregister_notifier();
++	dev_remove_offload(&dsa_pack_offload);
+ 	dev_remove_pack(&dsa_pack_type);
+ 	destroy_workqueue(dsa_owq);
+ }
+diff --git a/net/dsa/tag.c b/net/dsa/tag.c
+index 79ad105..edcf61c 100644
+--- a/net/dsa/tag.c
++++ b/net/dsa/tag.c
+@@ -7,11 +7,14 @@
+  * Copyright (c) 2016 Andrew Lunn <andrew@lunn.ch>
+  */
+ 
++#include <linux/etherdevice.h>
++#include <linux/moduleparam.h>
+ #include <linux/netdevice.h>
+ #include <linux/ptp_classify.h>
+ #include <linux/skbuff.h>
+ #include <net/dsa.h>
+ #include <net/dst_metadata.h>
++#include <net/gro.h>
+ 
+ #include "tag.h"
+ #include "user.h"
+@@ -19,6 +22,22 @@
+ static LIST_HEAD(dsa_tag_drivers_list);
+ static DEFINE_MUTEX(dsa_tag_drivers_lock);
+ 
++/*
++ * Experimental and disabled by default. DSA normally receives ETH_P_XDSA
++ * packets only after the conduit NAPI GRO pass has flushed them one by one,
++ * then schedules a second GRO pass on the user port. For the MxL862xx 802.1Q
++ * tagger, optionally demultiplex before the first GRO pass so TCP packets can
++ * be coalesced directly on the DSA user device.
++ *
++ * This is a laboratory switch, not a production default. It can be toggled
++ * through /sys/module/dsa_core/parameters/mxl862_8021q_gro_demux.
++ */
++static bool dsa_mxl862_8021q_gro_demux;
++module_param_named(mxl862_8021q_gro_demux,
++		   dsa_mxl862_8021q_gro_demux, bool, 0644);
++MODULE_PARM_DESC(mxl862_8021q_gro_demux,
++		 "Demultiplex MxL862xx 802.1Q DSA frames before conduit GRO");
++
+ /* Determine if we should defer delivery of skb until we have a rx timestamp.
+  *
+  * Called from dsa_switch_rcv. For now, this will only work if tagging is
+@@ -130,6 +149,103 @@ struct packet_type dsa_pack_type __read_mostly = {
+ 	.func	= dsa_switch_rcv,
+ };
+ 
++static void dsa_gro_list_prepare(const struct list_head *head,
++				 const struct sk_buff *skb)
++{
++	unsigned int maclen = skb->dev->hard_header_len;
++	u32 hash = skb_get_hash_raw(skb);
++	struct sk_buff *p;
++
++	list_for_each_entry(p, head, list) {
++		unsigned long diffs;
++
++		diffs = hash ^ skb_get_hash_raw(p);
++		diffs |= (unsigned long)p->dev ^ (unsigned long)skb->dev;
++		diffs |= p->vlan_all ^ skb->vlan_all;
++		diffs |= skb_metadata_differs(p, skb);
++		if (maclen == ETH_HLEN)
++			diffs |= compare_ether_header(skb_mac_header(p),
++						      skb_mac_header(skb));
++		else if (!diffs)
++			diffs = memcmp(skb_mac_header(p),
++				       skb_mac_header(skb), maclen);
++
++		NAPI_GRO_CB(p)->same_flow = !diffs;
++	}
++}
++
++static struct sk_buff *dsa_mxl862_8021q_gro_receive(struct list_head *head,
++						     struct sk_buff *skb)
++{
++	struct metadata_dst *md_dst = skb_metadata_dst(skb);
++	struct net_device *conduit = skb->dev;
++	struct dsa_port *cpu_dp = conduit->dsa_ptr;
++	const struct packet_offload *ptype;
++	struct dsa_user_priv *p;
++	struct sk_buff *nskb;
++
++	if (!READ_ONCE(dsa_mxl862_8021q_gro_demux) || !cpu_dp ||
++	    !cpu_dp->tag_ops ||
++	    cpu_dp->tag_ops->proto != DSA_TAG_PROTO_MXL862_8021Q ||
++	    !cpu_dp->rcv || md_dst || skb_cloned(skb) || skb_shared(skb) ||
++	    cpu_dp->ds->untag_bridge_pvid ||
++	    cpu_dp->ds->untag_vlan_aware_bridge_pvid)
++		goto flush;
++
++	nskb = cpu_dp->rcv(skb, conduit);
++	if (!nskb) {
++		kfree_skb(skb);
++		return ERR_PTR(-EINPROGRESS);
++	}
++
++	skb = nskb;
++	skb_push(skb, ETH_HLEN);
++	skb->pkt_type = PACKET_HOST;
++	skb->protocol = eth_type_trans(skb, skb->dev);
++
++	/* Preserve the normal DSA path's direct upper-device injection. */
++	if (unlikely(!dsa_user_dev_check(skb->dev)))
++		goto flush_demuxed;
++
++	p = netdev_priv(skb->dev);
++	dev_sw_netstats_rx_add(skb->dev, skb->len + ETH_HLEN);
++
++	if (dsa_skb_defer_rx_timestamp(p, skb))
++		return ERR_PTR(-EINPROGRESS);
++
++	if (netif_elide_gro(skb->dev))
++		goto flush_demuxed;
++
++	ptype = gro_find_receive_by_type(skb->protocol);
++	if (!ptype)
++		goto flush_demuxed;
++
++	/* dev_gro_receive() compared the conduit before this demultiplexing. */
++	dsa_gro_list_prepare(head, skb);
++	skb_set_network_header(skb, skb_gro_offset(skb));
++	skb_reset_mac_len(skb);
++
++	return indirect_call_gro_receive_inet(ptype->callbacks.gro_receive,
++					       ipv6_gro_receive,
++					       inet_gro_receive,
++					       head, skb);
++
++flush_demuxed:
++	skb_gro_flush_final(skb, NULL, 1);
++	return NULL;
++flush:
++	skb_gro_flush_final(skb, NULL, 1);
++	return NULL;
++}
++
++struct packet_offload dsa_pack_offload __read_mostly = {
++	.type = cpu_to_be16(ETH_P_XDSA),
++	.priority = 10,
++	.callbacks = {
++		.gro_receive = dsa_mxl862_8021q_gro_receive,
++	},
++};
++
+ static void dsa_tag_driver_register(struct dsa_tag_driver *dsa_tag_driver,
+ 				    struct module *owner)
+ {
+diff --git a/net/dsa/tag.h b/net/dsa/tag.h
+index 5d80dda..d8dbe1e 100644
+--- a/net/dsa/tag.h
++++ b/net/dsa/tag.h
+@@ -18,6 +18,7 @@ struct dsa_tag_driver {
+ };
+ 
+ extern struct packet_type dsa_pack_type;
++extern struct packet_offload dsa_pack_offload;
+ 
+ const struct dsa_device_ops *dsa_tag_driver_get_by_id(int tag_protocol);
+ const struct dsa_device_ops *dsa_tag_driver_get_by_name(const char *name);
