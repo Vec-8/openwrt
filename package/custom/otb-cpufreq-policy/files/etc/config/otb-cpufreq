@@ -3,10 +3,20 @@ config policy 'main'
 	option governor 'schedutil'
 	option min_freq '800000'
 	option boost_max_freq '1800000'
-	option profile_version '2'
+	option profile_version '3'
 	# Délai minimum entre deux changements décidés par schedutil.
 	option rate_limit_us '10000'
-	option interval '5'
+	option interval '1'
+	# 1,8 GHz uniquement sous charge, avec hystérésis CPU et réseau.
+	option load_boost '1'
+	option load_high_percent '25'
+	option load_low_percent '10'
+	option boost_hold_seconds '15'
+	option boost_min_freq '1800000'
+	option network_iface 'bond-trunk'
+	# Octets par seconde cumulés en réception et en émission.
+	option network_high_bps '125000000'
+	option network_low_bps '12500000'
 
 # Le R4 Pro dispose d'un refroidissement nettement plus efficace.
 config board 'r4pro'

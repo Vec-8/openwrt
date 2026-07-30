@@ -12,7 +12,15 @@ load_policy() {
 	config_get min_freq main min_freq 800000
 	config_get boost_max main boost_max_freq 1800000
 	config_get rate_limit main rate_limit_us 10000
-	config_get interval main interval 5
+	config_get interval main interval 1
+	config_get_bool load_boost main load_boost 1
+	config_get load_high main load_high_percent 25
+	config_get load_low main load_low_percent 10
+	config_get boost_hold main boost_hold_seconds 15
+	config_get boost_min main boost_min_freq 1800000
+	config_get network_iface main network_iface bond-trunk
+	config_get network_high main network_high_bps 125000000
+	config_get network_low main network_low_bps 12500000
 
 	board="$(ubus call system board 2>/dev/null |
 		jsonfilter -e '@.board_name')"
@@ -41,9 +49,6 @@ load_policy() {
 			;;
 	esac
 
-	# Les sections par carte priment. En leur absence, les valeurs sûres
-	# codées pour la carte s'appliquent immédiatement, même avant migration
-	# du fichier UCI historique.
 	config_get thermal_high "$profile" thermal_high "$thermal_high_default"
 	config_get thermal_low "$profile" thermal_low "$thermal_low_default"
 	config_get thermal_cap "$profile" thermal_cap_freq "$thermal_cap_default"
@@ -55,19 +60,44 @@ load_policy() {
 validate_policy() {
 	local value
 	for value in \
-		"$min_freq" "$boost_max" "$rate_limit" "$interval" \
+		"$min_freq" "$boost_min" "$boost_max" "$rate_limit" "$interval" \
+		"$load_boost" "$load_high" "$load_low" "$boost_hold" \
+		"$network_high" "$network_low" \
 		"$thermal_high" "$thermal_low" "$thermal_cap" \
 		"$emergency_high" "$emergency_low" "$emergency_cap"
 	do
 		case "$value" in ''|*[!0-9]*) return 1 ;; esac
 	done
+	case "$network_iface" in
+		''|*[!A-Za-z0-9_.-]*) return 1 ;;
+	esac
 	[ "$interval" -ge 1 ] &&
+		[ "$load_low" -lt "$load_high" ] &&
+		[ "$load_high" -le 100 ] &&
+		[ "$network_low" -lt "$network_high" ] &&
 		[ "$min_freq" -le "$emergency_cap" ] &&
 		[ "$emergency_cap" -le "$thermal_cap" ] &&
 		[ "$thermal_cap" -le "$boost_max" ] &&
+		[ "$boost_min" -le "$boost_max" ] &&
 		[ "$thermal_low" -lt "$thermal_high" ] &&
 		[ "$thermal_high" -le "$emergency_low" ] &&
 		[ "$emergency_low" -lt "$emergency_high" ]
+}
+
+read_cpu_sample() {
+	read -r _ user nice system idle iowait irq softirq steal _ </proc/stat
+	cpu_idle=$((idle + iowait))
+	cpu_total=$((cpu_idle + user + nice + system + irq + softirq + steal))
+}
+
+read_network_sample() {
+	local rx tx
+	rx="$(cat "/sys/class/net/$network_iface/statistics/rx_bytes" 2>/dev/null)"
+	tx="$(cat "/sys/class/net/$network_iface/statistics/tx_bytes" 2>/dev/null)"
+	case "$rx:$tx" in
+		*[!0-9:]*|:*|*:) network_total=0 ;;
+		*) network_total=$((rx + tx)) ;;
+	esac
 }
 
 write_state() {
@@ -77,13 +107,18 @@ write_state() {
 		printf 'profile=%s\n' "$profile"
 		printf 'state=%s\n' "$state"
 		printf 'temperature_mC=%s\n' "$temp"
-		printf 'min_freq_kHz=%s\n' "$min_freq"
-		printf 'max_freq_kHz=%s\n' "$1"
+		printf 'busy_percent=%s\n' "$busy"
+		printf 'network_iface=%s\n' "$network_iface"
+		printf 'network_Bps=%s\n' "$network_Bps"
+		printf 'boost_until_epoch=%s\n' "$boost_until"
+		printf 'min_freq_kHz=%s\n' "$applied_min"
+		printf 'max_freq_kHz=%s\n' "$applied_max"
 	} >"$STATE_FILE"
 }
 
 apply_limit() {
-	local requested_max="$1" policy available selected applied=0
+	local requested_min="$1" requested_max="$2"
+	local policy available selected applied=0
 	for policy in /sys/devices/system/cpu/cpufreq/policy*; do
 		[ -d "$policy" ] || continue
 		available="$(cat "$policy/scaling_available_governors" 2>/dev/null)"
@@ -95,15 +130,14 @@ apply_limit() {
 			*) logger -t "$TAG" "aucun gouverneur dynamique disponible pour $policy"; continue ;;
 		esac
 
-		# Réduire d'abord le minimum permet aussi l'application d'un plafond bas.
-		echo "$min_freq" > "$policy/scaling_min_freq" || continue
-		echo "$requested_max" > "$policy/scaling_max_freq" || continue
-		echo "$selected" > "$policy/scaling_governor" || continue
-
-		# Le noyau 6.18 du MT7988 expose un délai schedutil unique.
-		if [ "$selected" = schedutil ] && \
+		# Un minimum bas est toujours appliqué avant de réduire le plafond.
+		echo "$min_freq" >"$policy/scaling_min_freq" || continue
+		echo "$requested_max" >"$policy/scaling_max_freq" || continue
+		echo "$requested_min" >"$policy/scaling_min_freq" || continue
+		echo "$selected" >"$policy/scaling_governor" || continue
+		if [ "$selected" = schedutil ] &&
 		   [ -w "$policy/schedutil/rate_limit_us" ]; then
-			echo "$rate_limit" > "$policy/schedutil/rate_limit_us"
+			echo "$rate_limit" >"$policy/schedutil/rate_limit_us"
 		fi
 		applied=$((applied + 1))
 	done
@@ -111,18 +145,95 @@ apply_limit() {
 }
 
 apply_state() {
-	local new_state="$1" max
+	local new_state="$1" requested_min requested_max
 	case "$new_state" in
-		normal) max="$boost_max" ;;
-		thermal) max="$thermal_cap" ;;
-		emergency) max="$emergency_cap" ;;
+		normal)
+			requested_min="$min_freq"
+			requested_max="$boost_max"
+			;;
+		boost)
+			requested_min="$boost_min"
+			requested_max="$boost_max"
+			;;
+		thermal)
+			requested_min="$min_freq"
+			requested_max="$thermal_cap"
+			;;
+		emergency)
+			requested_min="$min_freq"
+			requested_max="$emergency_cap"
+			;;
 		*) return 1 ;;
 	esac
-	if apply_limit "$max"; then
-		logger -t "$TAG" "etat=$new_state min=${min_freq}kHz max=${max}kHz gouverneur=$governor temperature=${temp}mC"
+	if apply_limit "$requested_min" "$requested_max"; then
 		state="$new_state"
-		write_state "$max"
+		applied_min="$requested_min"
+		applied_max="$requested_max"
+		logger -t "$TAG" \
+			"etat=$state min=${applied_min}kHz max=${applied_max}kHz charge=${busy}% reseau=${network_Bps}B/s temperature=${temp}mC"
+		return 0
 	fi
+	return 1
+}
+
+choose_load_state() {
+	local now
+	if [ "$load_boost" -ne 1 ]; then
+		desired=normal
+		return
+	fi
+	now="$(date +%s)"
+	if [ "$busy" -ge "$load_high" ] ||
+	   [ "$network_Bps" -ge "$network_high" ]; then
+		boost_until=$((now + boost_hold))
+	fi
+	if [ "$now" -lt "$boost_until" ]; then
+		desired=boost
+	elif [ "$busy" -le "$load_low" ] &&
+	     [ "$network_Bps" -le "$network_low" ]; then
+		desired=normal
+	elif [ "$state" = boost ]; then
+		desired=boost
+	else
+		desired=normal
+	fi
+}
+
+choose_state() {
+	if [ "$sensor_failed" -eq 1 ]; then
+		desired=thermal
+		return
+	fi
+
+	case "$state" in
+		emergency)
+		if [ "$temp" -gt "$emergency_low" ]; then
+			desired=emergency
+		elif [ "$temp" -gt "$thermal_low" ]; then
+			desired=thermal
+		else
+			choose_load_state
+		fi
+		;;
+		thermal)
+		if [ "$temp" -ge "$emergency_high" ]; then
+			desired=emergency
+		elif [ "$temp" -gt "$thermal_low" ]; then
+			desired=thermal
+		else
+			choose_load_state
+		fi
+		;;
+		*)
+		if [ "$temp" -ge "$emergency_high" ]; then
+			desired=emergency
+		elif [ "$temp" -ge "$thermal_high" ]; then
+			desired=thermal
+		else
+			choose_load_state
+		fi
+		;;
+	esac
 }
 
 load_policy || exit 1
@@ -134,62 +245,67 @@ fi
 
 state=unknown
 sensor_failed=0
+boost_until=0
+busy=0
+network_Bps=0
+applied_min="$min_freq"
+applied_max="$boost_max"
+temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
+case "$temp" in
+	''|*[!0-9]*)
+		temp="$thermal_high"
+		sensor_failed=1
+		logger -t "$TAG" "sonde thermique illisible: plafond de sécurité appliqué"
+		;;
+esac
+choose_state
+apply_state "$desired" || exit 1
+write_state
+read_cpu_sample
+previous_cpu_total="$cpu_total"
+previous_cpu_idle="$cpu_idle"
+read_network_sample
+previous_network_total="$network_total"
+
 while :; do
+	sleep "$interval"
+
+	read_cpu_sample
+	delta_cpu_total=$((cpu_total - previous_cpu_total))
+	delta_cpu_idle=$((cpu_idle - previous_cpu_idle))
+	previous_cpu_total="$cpu_total"
+	previous_cpu_idle="$cpu_idle"
+	if [ "$delta_cpu_total" -gt 0 ]; then
+		busy=$(((delta_cpu_total - delta_cpu_idle) * 100 / delta_cpu_total))
+	else
+		busy=0
+	fi
+
+	read_network_sample
+	network_Bps=$(((network_total - previous_network_total) / interval))
+	previous_network_total="$network_total"
+	[ "$network_Bps" -ge 0 ] || network_Bps=0
+
 	temp="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
 	case "$temp" in
 		''|*[!0-9]*)
-			# Une sonde illisible ne doit jamais ouvrir le plafond à 1,8 GHz.
-			if [ "$state" = emergency ]; then
-				temp="$emergency_high"
-			else
-				temp="$thermal_high"
-			fi
+			temp="$thermal_high"
 			if [ "$sensor_failed" -eq 0 ]; then
 				logger -t "$TAG" "sonde thermique illisible: plafond de sécurité appliqué"
-				sensor_failed=1
 			fi
+			sensor_failed=1
 			;;
 		*)
 			if [ "$sensor_failed" -eq 1 ]; then
 				logger -t "$TAG" "sonde thermique de nouveau lisible"
-				sensor_failed=0
 			fi
+			sensor_failed=0
 			;;
 	esac
 
-	case "$state" in
-		unknown)
-			if [ "$temp" -ge "$emergency_high" ]; then
-				apply_state emergency
-			elif [ "$temp" -ge "$thermal_high" ]; then
-				apply_state thermal
-			else
-				apply_state normal
-			fi
-			;;
-		normal)
-			if [ "$temp" -ge "$emergency_high" ]; then
-				apply_state emergency
-			elif [ "$temp" -ge "$thermal_high" ]; then
-				apply_state thermal
-			fi
-			;;
-		thermal)
-			if [ "$temp" -ge "$emergency_high" ]; then
-				apply_state emergency
-			elif [ "$temp" -le "$thermal_low" ]; then
-				apply_state normal
-			fi
-			;;
-		emergency)
-			if [ "$temp" -le "$emergency_low" ]; then
-				if [ "$temp" -le "$thermal_low" ]; then
-					apply_state normal
-				else
-					apply_state thermal
-				fi
-			fi
-			;;
-	esac
-	sleep "$interval"
+	choose_state
+	if [ "$desired" != "$state" ]; then
+		apply_state "$desired" || continue
+	fi
+	write_state
 done
