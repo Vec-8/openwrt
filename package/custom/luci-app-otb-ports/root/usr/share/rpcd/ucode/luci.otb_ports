@@ -34,6 +34,7 @@ function push_unique(values, value) {
 function board_information() {
 	let content = readfile('/etc/board.json');
 	let board = {};
+	let board_name = read_text('/tmp/sysinfo/board_name');
 
 	try { board = json(content || '{}'); }
 	catch (e) { board = {}; }
@@ -55,9 +56,42 @@ function board_information() {
 	}
 
 	return {
+		board_name,
 		model: board.model || {},
 		ports,
 		roles
+	};
+}
+
+function port_identity(board_name, name) {
+	let display_name = name;
+	let hardware_path = null;
+
+	if (board_name == 'bananapi,bpi-r4-pro-8x') {
+		if (name == 'mxl_lan5') {
+			display_name = 'SFP1';
+			hardware_path = 'MaxLinear / DSA';
+		}
+		else if (name == 'eth1') {
+			display_name = 'SFP2';
+			hardware_path = 'SoC direct';
+		}
+	}
+	else if (board_name == 'bananapi,bpi-r4') {
+		if (name == 'sfp-wan') {
+			display_name = 'SFP1';
+			hardware_path = 'SoC direct · XFI0';
+		}
+		else if (name == 'sfp-lan') {
+			display_name = 'SFP2';
+			hardware_path = 'SoC direct · XFI1';
+		}
+	}
+
+	return {
+		display_name,
+		kernel_name: name,
+		hardware_path
 	};
 }
 
@@ -162,7 +196,7 @@ function parse_bond(path) {
 	return bond;
 }
 
-function bonds_and_members(vlans) {
+function bonds_and_members(vlans, board_name) {
 	let bonds = [];
 	let member_to_bond = {};
 
@@ -170,8 +204,13 @@ function bonds_and_members(vlans) {
 		let bond = parse_bond(path);
 		bond.vlans = vlans[bond.name] || [];
 
-		for (let slave in bond.slaves)
+		for (let slave in bond.slaves) {
+			let identity = port_identity(board_name, slave.name);
+			slave.display_name = identity.display_name;
+			slave.kernel_name = identity.kernel_name;
+			slave.hardware_path = identity.hardware_path;
 			member_to_bond[slave.name] = bond.name;
+		}
 
 		push(bonds, bond);
 	}
@@ -211,9 +250,10 @@ function inherited_vlans(entries, bond) {
 	return result;
 }
 
-function port_status(name, role, vlans, member_to_bond, ifindex_map) {
+function port_status(board_name, name, role, vlans, member_to_bond, ifindex_map) {
 	let path = '/sys/class/net/' + name;
 	let bond = member_to_bond[name];
+	let identity = port_identity(board_name, name);
 	let direct_vlans = vlans[name] || [];
 	let effective_vlans = length(direct_vlans)
 		? direct_vlans
@@ -224,6 +264,9 @@ function port_status(name, role, vlans, member_to_bond, ifindex_map) {
 
 	return {
 		name,
+		display_name: identity.display_name,
+		kernel_name: identity.kernel_name,
+		hardware_path: identity.hardware_path,
 		role: role || null,
 		present: read_text(path + '/ifindex') != null,
 		operstate: read_text(path + '/operstate'),
@@ -264,6 +307,7 @@ function all_ports(board, vlans, bond_state) {
 
 	for (let name in names)
 		push(ports, port_status(
+			board.board_name,
 			name,
 			board.roles[name],
 			vlans,
@@ -279,7 +323,7 @@ const methods = {
 		call: function() {
 			let board = board_information();
 			let vlans = bridge_vlans();
-			let bond_state = bonds_and_members(vlans);
+			let bond_state = bonds_and_members(vlans, board.board_name);
 
 			return {
 				schema: 1,

@@ -424,7 +424,12 @@ function opticalTable(modules) {
 				: E('span', {}, [ 'N/D' ]);
 
 			return E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td' }, [ module.interface ]),
+				E('div', { 'class': 'td' }, [
+					E('strong', {}, [ module.display_name || module.interface ]),
+					module.display_name && module.display_name !== module.interface
+						? E('small', { 'style': 'display:block;color:#666' }, [ module.interface ])
+						: E('span')
+				]),
 				E('div', { 'class': 'td' }, [ module.link ]),
 				E('div', { 'class': 'td' }, [
 					module.eeprom_detected

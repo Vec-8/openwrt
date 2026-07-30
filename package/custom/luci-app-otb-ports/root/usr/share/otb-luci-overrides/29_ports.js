@@ -49,9 +49,15 @@ function portCard(port) {
 		'class': 'otb-overview-port ' + (up ? 'up' : 'down') + (slow ? ' slow' : '')
 	}, [
 		E('div', { 'class': 'otb-overview-name' }, [
-			E('strong', {}, [ value(port.name) ]),
+			E('strong', {}, [ value(port.display_name || port.name) ]),
 			E('span', { 'class': 'otb-overview-state' }, [ state ])
 		]),
+		port.display_name && port.display_name !== port.name
+			? E('small', { 'class': 'otb-overview-kernel-name' }, [
+				value(port.kernel_name || port.name),
+				port.hardware_path ? ' · ' + port.hardware_path : ''
+			])
+			: E('span'),
 		E('div', { 'class': 'otb-overview-link' }, [
 			port.speed_mbps
 				? '%s Mbit/s · %s'.format(port.speed_mbps, value(port.duplex))
@@ -71,6 +77,7 @@ function renderStatus(data) {
 .otb-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.65rem;margin-bottom:1rem}
 .otb-overview-port{border:1px solid rgba(127,127,127,.3);border-top:4px solid #9b2c2c;border-radius:.55rem;padding:.65rem;min-width:0}.otb-overview-port.up{border-top-color:#16823b}.otb-overview-port.slow{border-top-color:#d87900}
 .otb-overview-name{display:flex;justify-content:space-between;gap:.4rem}.otb-overview-state{font-size:.72rem;font-weight:600}.otb-overview-link{margin:.35rem 0;font-size:.86rem}
+.otb-overview-kernel-name{display:block;color:#666;font-size:.69rem;margin-top:.1rem}
 .otb-overview-vlans{display:flex;flex-wrap:wrap;gap:.22rem}.otb-overview-vlan{border-radius:.3rem;padding:.12rem .28rem;font-size:.68rem;font-weight:700}.otb-overview-vlan.tagged{background:#dcecff;color:#174a7c}.otb-overview-vlan.untagged{background:#e2f5e5;color:#175c2a}.otb-overview-no-vlan{font-size:.72rem;color:#9a3412;font-weight:600}
 ` ]),
 		E('div', { 'class': 'otb-overview-grid' }, ports.map(portCard))

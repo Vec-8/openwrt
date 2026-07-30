@@ -50,9 +50,15 @@ function portCard(port) {
 
 	return E('div', { 'class': 'otb-port-card ' + (up ? 'up' : 'down') }, [
 		E('div', { 'class': 'otb-port-title' }, [
-			E('strong', {}, [ value(port.name) ]),
+			E('strong', {}, [ value(port.display_name || port.name) ]),
 			linkBadge(up)
 		]),
+		port.display_name && port.display_name !== port.name
+			? E('small', { 'class': 'otb-port-kernel-name' }, [
+				value(port.kernel_name || port.name),
+				port.hardware_path ? ' · ' + port.hardware_path : ''
+			])
+			: E('span'),
 		E('div', { 'class': 'otb-port-link' }, [
 			port.speed_mbps
 				? '%s Mbit/s · %s'.format(port.speed_mbps, value(port.duplex))
@@ -70,11 +76,18 @@ function bondSummary(bond) {
 		return E('li', {}, [
 			linkBadge(ok),
 			' ',
-			value(slave.name),
+			value(slave.display_name || slave.name),
 			' · ',
 			value(slave.speed),
 			' · ',
-			_('agrégateur %s').format(value(slave.aggregator_id))
+			_('agrégateur %s').format(value(slave.aggregator_id)),
+			slave.display_name && slave.display_name !== slave.name
+				? E('small', {}, [
+					' · ',
+					value(slave.kernel_name || slave.name),
+					slave.hardware_path ? ' · ' + slave.hardware_path : ''
+				])
+				: E('span')
 		]);
 	});
 
@@ -103,6 +116,7 @@ function renderContent(data) {
 .otb-port-card{border-left:5px solid #a52a2a}.otb-port-card.up{border-left-color:#16823b}.otb-port-title{display:flex;justify-content:space-between;align-items:center;font-size:1.08rem}
 .otb-port-badge{display:inline-block;border-radius:999px;padding:.12rem .55rem;background:#a52a2a;color:#fff;font-size:.78rem}.otb-port-badge.up{background:#16823b}
 .otb-port-link{margin:.65rem 0}.otb-vlan-list{display:flex;flex-wrap:wrap;gap:.35rem}.otb-vlan-badge{display:inline-block;border-radius:.4rem;padding:.22rem .45rem;font-weight:600;font-size:.79rem}
+.otb-port-kernel-name{display:block;color:#666;margin-top:.15rem}
 .otb-vlan-badge.tagged{background:#dcecff;color:#174a7c}.otb-vlan-badge.untagged{background:#e2f5e5;color:#175c2a}.otb-no-vlan{color:#9a3412;font-weight:600}
 .otb-bond-card ul{padding-left:1.2rem}.otb-bond-card li{margin:.35rem 0}
 ` ]),

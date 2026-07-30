@@ -350,6 +350,16 @@ function optical_candidates(board_name) {
 	return names;
 }
 
+function optical_display_name(board_name, name) {
+	if (board_name == 'bananapi,bpi-r4-pro-8x')
+		return name == 'mxl_lan5' ? 'SFP1' : (name == 'eth1' ? 'SFP2' : name);
+
+	if (board_name == 'bananapi,bpi-r4')
+		return name == 'sfp-wan' ? 'SFP1' : (name == 'sfp-lan' ? 'SFP2' : name);
+
+	return name;
+}
+
 function optical_modules() {
 	let modules = [];
 	let board_name = read_text('/tmp/sysinfo/board_name', 'generic');
@@ -416,6 +426,7 @@ function optical_modules() {
 
 		push(modules, {
 			interface: name,
+			display_name: optical_display_name(board_name, name),
 			link,
 			eeprom_detected: length(output || '') > 0,
 			dom_supported,
