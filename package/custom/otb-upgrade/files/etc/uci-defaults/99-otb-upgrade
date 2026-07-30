@@ -1,9 +1,19 @@
 #!/bin/sh
 
 # Configuration commune du canal signé, même si une ancienne configuration a
-# été conservée par sysupgrade.
+# été conservée par sysupgrade. Un miroir loopback déjà provisionné reste
+# prioritaire ; le serveur central reste le repli d'une installation neuve.
+base_url='http://10.0.10.200:8088'
+if [ "$(uci -q get otb-firmware-mirror.main.enabled 2>/dev/null)" = 1 ]; then
+	mirror_docroot="$(uci -q get otb-firmware-mirror.main.docroot 2>/dev/null)"
+	if [ -n "$mirror_docroot" ] &&
+	   { [ -r "$mirror_docroot/r4pro/stable/manifest.json" ] ||
+	     [ -r "$mirror_docroot/r4sud/stable/manifest.json" ]; }; then
+		base_url='http://127.0.0.1:8088'
+	fi
+fi
 uci -q set otb-upgrade.main=channel
-uci -q set otb-upgrade.main.base_url='http://10.0.10.200:8088'
+uci -q set otb-upgrade.main.base_url="$base_url"
 uci -q set otb-upgrade.main.channel='stable'
 uci -q set otb-upgrade.main.public_key='/etc/otb-upgrade/otb-firmware.pub'
 uci -q set otb-upgrade.main.auto_install='1'
