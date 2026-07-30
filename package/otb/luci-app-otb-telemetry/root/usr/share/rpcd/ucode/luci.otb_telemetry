@@ -1,0 +1,541 @@
+#!/usr/bin/env ucode
+
+'use strict';
+
+import { basename, glob, popen, readfile } from 'fs';
+
+const HISTORY_FILE = '/tmp/otb-telemetry/history.jsonl';
+
+function number_from_string(value) {
+	let result = match(value || '', /-?[0-9]+([.][0-9]+)?/);
+	return result ? +result[0] : null;
+}
+
+function read_number(path, divisor) {
+	let raw = readfile(path);
+	if (raw == null)
+		return null;
+
+	let value = number_from_string(raw);
+	return value == null ? null : value / (divisor || 1);
+}
+
+function read_text(path, fallback) {
+	let raw = readfile(path);
+	return raw == null ? (fallback || '') : trim(raw);
+}
+
+function proc_value(content, key, divisor) {
+	for (let line in split(content || '', '\n')) {
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		if (trim(substr(line, 0, separator)) != key)
+			continue;
+
+		let value = number_from_string(substr(line, separator + 1));
+		return value == null ? null : value / (divisor || 1);
+	}
+
+	return null;
+}
+
+function memory_status() {
+	let content = readfile('/proc/meminfo') || '';
+	let total_kib = proc_value(content, 'MemTotal');
+	let available_kib = proc_value(content, 'MemAvailable');
+
+	if (available_kib == null)
+		available_kib = proc_value(content, 'MemFree');
+
+	let used_kib = total_kib != null && available_kib != null
+		? total_kib - available_kib
+		: null;
+
+	return {
+		total_mib: total_kib == null ? null : total_kib / 1024,
+		available_mib: available_kib == null ? null : available_kib / 1024,
+		used_mib: used_kib == null ? null : used_kib / 1024,
+		used_percent: total_kib && used_kib != null ? used_kib * 100 / total_kib : null
+	};
+}
+
+function load_status() {
+	let fields = split(trim(readfile('/proc/loadavg') || ''), /[[:space:]]+/);
+	return {
+		load_1: length(fields) > 0 ? number_from_string(fields[0]) : null,
+		load_5: length(fields) > 1 ? number_from_string(fields[1]) : null,
+		load_15: length(fields) > 2 ? number_from_string(fields[2]) : null
+	};
+}
+
+function system_status() {
+	return {
+		hostname: read_text('/proc/sys/kernel/hostname', 'OpenWrt'),
+		model: read_text('/tmp/sysinfo/model', 'OpenWrt'),
+		board_name: read_text('/tmp/sysinfo/board_name', 'generic'),
+		kernel: read_text('/proc/sys/kernel/osrelease', ''),
+		uptime_s: read_number('/proc/uptime', 1),
+		memory: memory_status(),
+		load: load_status()
+	};
+}
+
+function thermal_zones() {
+	let zones = [];
+
+	for (let path in glob('/sys/class/thermal/thermal_zone*')) {
+		let current = read_number(path + '/temp', 1000);
+		if (current == null)
+			continue;
+
+		let trips = [];
+		for (let trip_path in glob(path + '/trip_point_*_temp')) {
+			let type_path = replace(trip_path, /_temp$/, '_type');
+			push(trips, {
+				type: read_text(type_path, 'unknown'),
+				temperature_c: read_number(trip_path, 1000)
+			});
+		}
+
+		push(zones, {
+			id: basename(path),
+			label: read_text(path + '/type', basename(path)),
+			temperature_c: current,
+			operational_warning_c: 70,
+			operational_critical_c: 85,
+			trips
+		});
+	}
+
+	return zones;
+}
+
+function sensor_category(name) {
+	if (match(name, /^mt7996/))
+		return 'wifi';
+	if (match(name, /(^|_)sfp/) || match(name, /^sfp/))
+		return 'optical';
+	if (match(name, /mdio|phy/i))
+		return 'ethernet';
+	if (match(name, /fan/i))
+		return 'fan';
+	return 'other';
+}
+
+function sensor_label(name, label) {
+	let category = sensor_category(name);
+	if (category == 'wifi')
+		return 'Wi-Fi ' + name;
+	if (category == 'optical')
+		return 'Optique ' + name;
+	if (category == 'ethernet')
+		return 'PHY Ethernet ' + name;
+	if (label && label != 'temperature')
+		return name + ' · ' + label;
+	return name;
+}
+
+function hwmon_temperatures(include_optical) {
+	let sensors = [];
+
+	for (let path in glob('/sys/class/hwmon/hwmon*')) {
+		let name = read_text(path + '/name', basename(path));
+		let category = sensor_category(name);
+
+		if (name == 'cpu_thermal')
+			continue;
+		if (!include_optical && category == 'optical')
+			continue;
+
+		for (let input_path in glob(path + '/temp*_input')) {
+			let base_path = replace(input_path, /_input$/, '');
+			let channel = basename(base_path);
+			let value = read_number(input_path, 1000);
+			if (value == null)
+				continue;
+
+			let label = read_text(base_path + '_label', 'temperature');
+			push(sensors, {
+				id: 'hwmon:' + name + ':' + channel,
+				hwmon: name,
+				channel,
+				label: sensor_label(name, label),
+				category,
+				temperature_c: value,
+				native_max_c: read_number(base_path + '_max', 1000),
+				native_critical_c: read_number(base_path + '_crit', 1000),
+				operational_warning_c: 70,
+				operational_critical_c: 85
+			});
+		}
+	}
+
+	return sensors;
+}
+
+function cooling_devices() {
+	let devices = [];
+
+	for (let path in glob('/sys/class/thermal/cooling_device*')) {
+		push(devices, {
+			id: basename(path),
+			type: read_text(path + '/type', 'unknown'),
+			current_state: read_number(path + '/cur_state', 1),
+			max_state: read_number(path + '/max_state', 1)
+		});
+	}
+
+	return devices;
+}
+
+function fan_status() {
+	let controllers = [];
+	let tachometer_available = false;
+	let pwm_available = false;
+
+	for (let path in glob('/sys/class/hwmon/hwmon*')) {
+		let name = read_text(path + '/name', basename(path));
+		if (!match(name, /fan/i))
+			continue;
+
+		let pwm = read_number(path + '/pwm1', 1);
+		let rpm = read_number(path + '/fan1_input', 1);
+		let pwm_enable = read_number(path + '/pwm1_enable', 1);
+
+		if (pwm != null)
+			pwm_available = true;
+		if (rpm != null)
+			tachometer_available = true;
+
+		push(controllers, {
+			name,
+			pwm,
+			pwm_percent: pwm == null ? null : pwm * 100 / 255,
+			pwm_enable,
+			rpm
+		});
+	}
+
+	let cooling = [];
+	for (let item in cooling_devices()) {
+		if (match(item.type, /fan/i))
+			push(cooling, item);
+	}
+
+	return {
+		detected: length(controllers) > 0 || length(cooling) > 0,
+		pwm_available,
+		tachometer_available,
+		controllers,
+		cooling,
+		read_only: true
+	};
+}
+
+function cpu_frequencies() {
+	let policies = [];
+
+	for (let path in glob('/sys/devices/system/cpu/cpufreq/policy*')) {
+		push(policies, {
+			name: basename(path),
+			governor: read_text(path + '/scaling_governor', ''),
+			current_khz: read_number(path + '/scaling_cur_freq', 1),
+			min_khz: read_number(path + '/scaling_min_freq', 1),
+			max_khz: read_number(path + '/scaling_max_freq', 1),
+			available_khz: read_text(path + '/scaling_available_frequencies', '')
+		});
+	}
+
+	return policies;
+}
+
+function ethtool_field(output, prefix) {
+	for (let line in split(output || '', '\n')) {
+		line = trim(line);
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		let key = trim(substr(line, 0, separator));
+		if (key == prefix)
+			return trim(substr(line, separator + 1));
+	}
+
+	return null;
+}
+
+function optical_power_dbm(value) {
+	let result = match(value || '', /-?[0-9]+([.][0-9]+)?[[:space:]]*dBm/);
+	return result ? number_from_string(result[0]) : null;
+}
+
+function metric(output, prefix, parser, unit) {
+	let value = parser(ethtool_field(output, prefix));
+	let low_alarm = parser(ethtool_field(output, prefix + ' low alarm threshold'));
+	let low_warning = parser(ethtool_field(output, prefix + ' low warning threshold'));
+	let high_warning = parser(ethtool_field(output, prefix + ' high warning threshold'));
+	let high_alarm = parser(ethtool_field(output, prefix + ' high alarm threshold'));
+	let margin = null;
+
+	if (value != null) {
+		if (low_warning != null && high_warning != null) {
+			let low_margin = value - low_warning;
+			let high_margin = high_warning - value;
+			margin = low_margin < high_margin ? low_margin : high_margin;
+		}
+		else if (high_warning != null) {
+			margin = high_warning - value;
+		}
+		else if (low_warning != null) {
+			margin = value - low_warning;
+		}
+	}
+
+	return {
+		value,
+		unit,
+		low_alarm,
+		low_warning,
+		high_warning,
+		high_alarm,
+		margin_to_warning: margin
+	};
+}
+
+function optical_flags(output) {
+	let flags = [];
+
+	for (let line in split(output || '', '\n')) {
+		line = trim(line);
+		let separator = index(line, ':');
+		if (separator < 0)
+			continue;
+
+		let key = trim(substr(line, 0, separator));
+		let value = trim(substr(line, separator + 1));
+		if ((value == 'On' || value == 'Off') && match(key, /(alarm|warning)$/)) {
+			push(flags, {
+				name: key,
+				level: match(key, /alarm$/) ? 'alarm' : 'warning',
+				active: value == 'On'
+			});
+		}
+	}
+
+	return flags;
+}
+
+function optical_candidates(board_name) {
+	let names = [];
+
+	if (board_name == 'bananapi,bpi-r4-pro-8x') {
+		names = [ 'eth1', 'mxl_lan5' ];
+	}
+	else if (board_name == 'bananapi,bpi-r4') {
+		names = [ 'sfp-lan', 'sfp-wan' ];
+	}
+	else if (match(board_name, /swtgw3c8f|swtgw2c8f/)) {
+		names = [ 'lan1', 'lan2', 'lan3', 'lan4', 'lan5', 'lan6', 'lan7', 'lan8' ];
+	}
+	else {
+		for (let path in glob('/sys/class/net/*')) {
+			let name = basename(path);
+			if (match(name, /^[A-Za-z0-9_.@:-]+$/))
+				push(names, name);
+		}
+	}
+
+	return names;
+}
+
+function optical_modules() {
+	let modules = [];
+	let board_name = read_text('/tmp/sysinfo/board_name', 'generic');
+
+	for (let name in optical_candidates(board_name)) {
+		let path = '/sys/class/net/' + name;
+		if (readfile(path + '/operstate') == null)
+			continue;
+		if (!match(name, /^[A-Za-z0-9_.@:-]+$/))
+			continue;
+
+		let fd = popen('/usr/sbin/ethtool -m ' + name + ' 2>/dev/null', 'r');
+		let output = fd ? fd.read('all') : '';
+		if (fd)
+			fd.close();
+
+		let flags = optical_flags(output);
+		let alarm_count = 0;
+		let warning_count = 0;
+		for (let flag in flags) {
+			if (!flag.active)
+				continue;
+			if (flag.level == 'alarm')
+				alarm_count++;
+			else
+				warning_count++;
+		}
+
+		let temperature = metric(output, 'Module temperature', number_from_string, '°C');
+		let voltage = metric(output, 'Module voltage', number_from_string, 'V');
+		let bias = metric(output, 'Laser bias current', number_from_string, 'mA');
+		let tx = metric(output, 'Laser output power', optical_power_dbm, 'dBm');
+		let rx = metric(output, 'Laser rx power', optical_power_dbm, 'dBm');
+		if (rx.value == null)
+			rx.value = optical_power_dbm(ethtool_field(output, 'Receiver signal average optical power'));
+
+		let dom_supported = temperature.value != null ||
+			voltage.value != null ||
+			bias.value != null ||
+			tx.value != null ||
+			rx.value != null;
+		let link = read_text(path + '/operstate', 'unknown');
+		let severity = 'ok';
+		let reason = 'Aucune alarme DDM';
+
+		if (alarm_count > 0) {
+			severity = 'critical';
+			reason = alarm_count + ' alarme(s) DDM active(s)';
+		}
+		else if (warning_count > 0) {
+			severity = 'warning';
+			reason = warning_count + ' avertissement(s) DDM actif(s)';
+		}
+		else if (!length(output || '')) {
+			severity = link == 'up' ? 'warning' : 'offline';
+			reason = link == 'up'
+				? 'Lien actif sans EEPROM/DDM lisible'
+				: 'Aucun module DDM détecté';
+		}
+		else if (!dom_supported) {
+			severity = 'warning';
+			reason = 'Module détecté sans télémétrie DDM';
+		}
+
+		push(modules, {
+			interface: name,
+			link,
+			eeprom_detected: length(output || '') > 0,
+			dom_supported,
+			vendor: ethtool_field(output, 'Vendor name'),
+			part_number: ethtool_field(output, 'Vendor PN'),
+			serial: ethtool_field(output, 'Vendor SN'),
+			wavelength_nm: number_from_string(ethtool_field(output, 'Laser wavelength')),
+			temperature,
+			voltage,
+			bias,
+			tx,
+			rx,
+			flags,
+			alarm_count,
+			warning_count,
+			severity,
+			reason
+		});
+	}
+
+	return modules;
+}
+
+function sample_now() {
+	let temperatures = [];
+
+	for (let zone in thermal_zones()) {
+		push(temperatures, {
+			id: 'thermal:' + zone.label,
+			label: zone.label == 'cpu-thermal' ? 'SoC' : zone.label,
+			category: 'soc',
+			value_c: zone.temperature_c
+		});
+	}
+
+	for (let sensor in hwmon_temperatures(true)) {
+		push(temperatures, {
+			id: sensor.id,
+			label: sensor.label,
+			category: sensor.category,
+			value_c: sensor.temperature_c
+		});
+	}
+
+	let frequencies = cpu_frequencies();
+	let fan = fan_status();
+	let pwm = null;
+	if (length(fan.controllers) > 0)
+		pwm = fan.controllers[0].pwm;
+
+	return {
+		timestamp: time(),
+		temperatures,
+		load_1: load_status().load_1,
+		memory_used_percent: memory_status().used_percent,
+		cpu_current_khz: length(frequencies) > 0 ? frequencies[0].current_khz : null,
+		fan_pwm: pwm
+	};
+}
+
+function history_status() {
+	let samples = [];
+	let content = readfile(HISTORY_FILE) || '';
+
+	for (let line in split(content, '\n')) {
+		line = trim(line);
+		if (!length(line))
+			continue;
+
+		try {
+			let item = json(line);
+			if (type(item) == 'object')
+				push(samples, item);
+		}
+		catch (e) {
+			/* Une ligne incomplète ne doit jamais casser la page LuCI. */
+		}
+	}
+
+	return {
+		volatile: true,
+		storage: 'RAM (/tmp)',
+		interval_s: 300,
+		retention_s: 86400,
+		samples
+	};
+}
+
+const methods = {
+	status: {
+		call: function() {
+			return {
+				version: '1.0.0',
+				timestamp: time(),
+				system: system_status(),
+				thermal_zones: thermal_zones(),
+				hardware_temperatures: hwmon_temperatures(false),
+				fan: fan_status(),
+				cooling_devices: cooling_devices(),
+				cpu_frequencies: cpu_frequencies(),
+				optical_modules: optical_modules(),
+				history: {
+					enabled: true,
+					volatile: true,
+					interval_s: 300,
+					retention_s: 86400
+				}
+			};
+		}
+	},
+	sample: {
+		call: function() {
+			return sample_now();
+		}
+	},
+	history: {
+		call: function() {
+			return history_status();
+		}
+	}
+};
+
+return { 'luci.otb_telemetry': methods };

@@ -1,0 +1,28 @@
+#!/bin/sh
+
+HISTORY_DIR='/tmp/otb-telemetry'
+HISTORY_FILE="$HISTORY_DIR/history.jsonl"
+INTERVAL=300
+MAX_SAMPLES=288
+
+mkdir -p "$HISTORY_DIR"
+[ -e "$HISTORY_FILE" ] || : >"$HISTORY_FILE"
+
+while true; do
+	sample="$(ubus -S call luci.otb_telemetry sample 2>/dev/null)"
+	if [ -n "$sample" ]; then
+		printf '%s\n' "$sample" >>"$HISTORY_FILE"
+	fi
+
+	lines="$(wc -l <"$HISTORY_FILE" 2>/dev/null || printf '0')"
+	case "$lines" in
+		''|*[!0-9]*) lines=0 ;;
+	esac
+
+	if [ "$lines" -gt "$MAX_SAMPLES" ]; then
+		tail -n "$MAX_SAMPLES" "$HISTORY_FILE" >"$HISTORY_FILE.new" &&
+			mv "$HISTORY_FILE.new" "$HISTORY_FILE"
+	fi
+
+	sleep "$INTERVAL"
+done

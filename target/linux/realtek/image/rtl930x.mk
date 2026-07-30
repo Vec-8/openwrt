@@ -114,7 +114,8 @@ define Device/sodola_sl-swtgw3c8f
   UIMAGE_MAGIC := 0x83800000
   DEVICE_VENDOR := SODOLA
   DEVICE_MODEL := SL-SWTGW3C8F
-  DEVICE_PACKAGES := kmod-bonding proto-bonding ip-full ip-bridge ethtool-full
+  DEVICE_PACKAGES := kmod-bonding proto-bonding ip-full ip-bridge ethtool-full \
+	luci-app-otb-telemetry
   IMAGE_SIZE := 12288k
   $(Device/kernel-lzma)
   IMAGES += factory.bix

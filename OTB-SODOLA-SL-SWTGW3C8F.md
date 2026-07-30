@@ -1,19 +1,23 @@
 # SODOLA SL-SWTGW3C8F — portage OpenWrt expérimental OTB
 
-## État et avertissement
+## État actuel et avertissement
 
 Cette branche ajoute un profil dédié au **SODOLA SL-SWTGW3C8F** et un mode
 de hachage LACP `layer3+4` explicitement activé pour ce profil. Elle est basée
 sur OpenWrt `main` au commit `d0110a25edf1854813fcb8f03f38d65679bd6378`
 (Linux 6.18).
 
-**Une compilation réussie ne vaut pas validation matérielle.** Aucun flash ne
-doit être effectué tant que les éléments suivants ne sont pas obtenus sur le
-switch réel : console série fonctionnelle, sauvegarde intégrale des MTD,
-environnement U-Boot, configuration réseau/LACP/VLAN exportée et test de
-récupération TFTP. Le partitionnement `/proc/mtd` a désormais été confirmé en
-lecture seule, mais les autres prérequis de récupération ne le sont pas encore.
-Les images constructeur ne sont pas incluses dans ce dépôt.
+Une image issue de cette branche fonctionne désormais sur le switch réel sous
+Linux 6.18.39. La recette du 30 juillet 2026 confirme les agrégats 2×10G vers
+le R4 Pro et le R4 Sud, les VLAN effectifs, LuCI en français avec Argon et la
+télémétrie SoC/DDM. Les sauvegardes et chemins de récupération restent
+obligatoires avant tout nouveau flash : une compilation réussie ne garantit
+pas qu'une modification future soit sûre. Les images constructeur et les
+sauvegardes binaires ne sont pas incluses dans ce dépôt.
+
+La télémétrie unifiée, ses tests et ses limites sont publiés dans
+`otb/telemetry/`. Le R4 Nord étant absent pendant cette recette, son agrégat
+reste volontairement signalé comme non validé.
 
 ## Matériel confirmé hors ligne
 
@@ -174,13 +178,14 @@ La configuration de référence sélectionne :
 - `lldpd` et `luci-app-lldpd` ;
 - le thème Argon et sa configuration ;
 - la vue OTB unifiée des ports, bonds et VLAN effectifs.
+- la télémétrie OTB unifiée, avec historique volatil en RAM.
 
 LuCI actuel configure le bonding comme un périphérique réseau natif. Son
 éditeur expose notamment `802.3ad`, `layer3+4`, `lacp_rate`, `min_links` et
 `ad_select`. Il n'existe plus de paquet `luci-proto-bonding` à ajouter.
 
-L'image OTB ajoute une page LuCI en lecture seule **LACP et températures**,
-traduite en français. Elle affiche :
+L'image OTB ajoute les pages LuCI en lecture seule **LACP et températures** et
+**Télémétrie matérielle**, traduites en français. Elles affichent :
 
 - état du bond, politique de hachage, partenaire, agrégateur et churn ;
 - vitesse et état de chaque membre physique ;
@@ -190,6 +195,11 @@ traduite en français. Elle affiche :
   puissances TX/RX en dBm, constructeur, référence, numéro de série et longueur
   d'onde ;
 - actualisation automatique toutes les 15 secondes.
+
+La page de télémétrie générale utilise un rafraîchissement de 30 secondes afin
+de limiter le coût des huit lectures EEPROM/DDM. Le collecteur historique
+travaille toutes les cinq minutes depuis sysfs, conserve au plus 288 mesures
+dans `/tmp` et n'écrit jamais sur la flash.
 
 L'affichage devient orange à partir de 70 °C et rouge à partir de 85 °C, sans
 modifier les seuils matériels. Les optiques sont interrogées en lecture seule

@@ -1,0 +1,13 @@
+{
+  "admin/status/otb-telemetry": {
+    "title": "Télémétrie matérielle",
+    "order": 84,
+    "action": {
+      "type": "view",
+      "path": "status/otb-telemetry"
+    },
+    "depends": {
+      "acl": [ "luci-app-otb-telemetry" ]
+    }
+  }
+}
