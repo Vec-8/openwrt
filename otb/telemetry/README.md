@@ -44,7 +44,9 @@ paquet est indépendant de l'architecture (`PKGARCH:=all`).
 
 ## Fichiers
 
-- `package/custom/luci-app-otb-telemetry/` : paquet OpenWrt ;
+- `package/custom/luci-app-otb-telemetry/` sur les branches R4, ou
+  `package/otb/luci-app-otb-telemetry/` sur la branche du switch : paquet
+  OpenWrt ;
 - `otb/telemetry/TESTS-20260730.md` : recette et valeurs observées ;
 - `otb/telemetry/LIMITATIONS.md` : limites connues, sans les masquer ;
 - `otb/telemetry/DEPLOYMENT.md` : intégration d'image, déploiement pilote et

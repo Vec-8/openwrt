@@ -2,8 +2,10 @@
 
 ## Intégration dans une image OpenWrt
 
-Le paquet se trouve dans `package/custom/luci-app-otb-telemetry`. Les profils
-OTB BPI-R4 et BPI-R4 Pro l'incluent via `DEVICE_PACKAGES`.
+Le paquet se trouve dans `package/custom/luci-app-otb-telemetry` sur les
+branches R4 et dans `package/otb/luci-app-otb-telemetry` sur la branche du
+switch. Les profils OTB concernés l'incluent via `DEVICE_PACKAGES` ou la
+configuration d'image de référence.
 
 ```sh
 make package/luci-app-otb-telemetry/compile V=s

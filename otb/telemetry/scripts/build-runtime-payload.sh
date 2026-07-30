@@ -3,6 +3,13 @@ set -eu
 
 REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)"
 PACKAGE_DIR="$REPO_ROOT/package/custom/luci-app-otb-telemetry"
+if [ ! -d "$PACKAGE_DIR" ]; then
+  PACKAGE_DIR="$REPO_ROOT/package/otb/luci-app-otb-telemetry"
+fi
+[ -d "$PACKAGE_DIR" ] || {
+  echo 'Paquet luci-app-otb-telemetry introuvable' >&2
+  exit 1
+}
 DIST_DIR="$REPO_ROOT/otb/telemetry/dist"
 STAGE="$DIST_DIR/runtime-root"
 ARCHIVE="$DIST_DIR/luci-app-otb-telemetry-runtime.tar.gz"
