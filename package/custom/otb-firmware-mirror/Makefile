@@ -20,6 +20,10 @@ define Package/otb-firmware-mirror/description
  or signs an image and remains disabled until a valid mirror is provisioned.
 endef
 
+define Package/otb-firmware-mirror/conffiles
+/etc/config/otb-firmware-mirror
+endef
+
 define Build/Compile
 endef
 
