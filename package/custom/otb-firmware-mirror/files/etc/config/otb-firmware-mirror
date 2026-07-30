@@ -1,0 +1,4 @@
+config mirror 'main'
+	option enabled '0'
+	option docroot '/srv/otb-firmware-mirror'
+	list listen '127.0.0.1:8088'

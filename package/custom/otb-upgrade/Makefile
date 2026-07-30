@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=otb-upgrade
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=35
+PKG_RELEASE:=36
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
 PKGARCH:=all
@@ -13,7 +13,7 @@ define Package/otb-upgrade
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=OTB signed firmware update client
-  DEPENDS:=+jsonfilter +uclient-fetch +usign
+  DEPENDS:=+jsonfilter +uclient-fetch +usign +otb-firmware-mirror
 endef
 
 define Package/otb-upgrade/description

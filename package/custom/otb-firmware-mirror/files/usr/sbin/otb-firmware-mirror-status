@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+config_load otb-firmware-mirror
+config_get_bool enabled main enabled 0
+config_get docroot main docroot /srv/otb-firmware-mirror
+
+printf 'enabled=%s\n' "$enabled"
+printf 'docroot=%s\n' "$docroot"
+
+if /etc/init.d/otb-firmware-mirror running >/dev/null 2>&1; then
+	printf 'service=running\n'
+else
+	printf 'service=stopped\n'
+fi
+
+for device in r4pro r4sud; do
+	manifest="$docroot/$device/stable/manifest.json"
+	[ -r "$manifest" ] || continue
+	printf '%s_sequence=' "$device"
+	jsonfilter -i "$manifest" -e '@.sequence'
+	printf '%s_build_id=' "$device"
+	jsonfilter -i "$manifest" -e '@.build_id'
+done
