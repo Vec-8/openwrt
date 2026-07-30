@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-30",
+  "kernel": "6.18.39",
+  "openwrt": "SNAPSHOT",
+  "devices": [
+    {
+      "id": "r4pro",
+      "label": "R4 Pro",
+      "model": "Bananapi BPI-R4-PRO-8X",
+      "soc_temperature_c": 56,
+      "fan": {
+        "detected": true,
+        "pwm_available": true,
+        "tachometer_available": false
+      },
+      "cpu_frequency_control_exposed": true,
+      "optics": [
+        {
+          "interface": "eth1",
+          "link": "up",
+          "temperature_c": 45.58,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 39.42,
+          "tx_dbm": 0.49,
+          "rx_dbm": -4.33,
+          "severity": "ok"
+        },
+        {
+          "interface": "mxl_lan5",
+          "link": "up",
+          "temperature_c": 46.07,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 38.93,
+          "tx_dbm": 0.15,
+          "rx_dbm": -4.43,
+          "severity": "ok"
+        }
+      ],
+      "performance": {
+        "status_seconds_per_call_approx": 0.14,
+        "sample_seconds_per_call_approx": 0.02,
+        "recorder_rss_mib_approx": 1.35
+      },
+      "alarms": {
+        "ddm_alarm_count": 0,
+        "ddm_warning_count": 0
+      }
+    },
+    {
+      "id": "r4sud",
+      "label": "R4 Sud",
+      "model": "Banana Pi BPI-R4 (2x SFP+)",
+      "soc_temperature_c": 58,
+      "fan": {
+        "detected": true,
+        "pwm_available": true,
+        "tachometer_available": false
+      },
+      "cpu_frequency_control_exposed": true,
+      "optics": [
+        {
+          "interface": "sfp-lan",
+          "link": "up",
+          "temperature_c": 65.64,
+          "temperature_warning_c": 75,
+          "temperature_alarm_c": 80,
+          "temperature_margin_to_warning_c": 9.36,
+          "tx_dbm": -2.12,
+          "rx_dbm": -7.54,
+          "severity": "ok"
+        },
+        {
+          "interface": "sfp-wan",
+          "link": "up",
+          "temperature_c": 52.86,
+          "temperature_warning_c": 75,
+          "temperature_alarm_c": 80,
+          "temperature_margin_to_warning_c": 22.14,
+          "tx_dbm": -1.51,
+          "rx_dbm": -6.23,
+          "severity": "ok"
+        }
+      ],
+      "performance": {
+        "status_seconds_per_call_approx": 0.12,
+        "sample_seconds_per_call_approx": 0.01,
+        "recorder_rss_mib_approx": 1.36
+      },
+      "alarms": {
+        "ddm_alarm_count": 0,
+        "ddm_warning_count": 0
+      }
+    },
+    {
+      "id": "switch",
+      "label": "Switch coeur",
+      "model": "SODOLA SL-SWTGW3C8F",
+      "soc_temperature_c": 63,
+      "fan": {
+        "detected": false,
+        "pwm_available": false,
+        "tachometer_available": false
+      },
+      "cpu_frequency_control_exposed": false,
+      "optics": [
+        {
+          "interface": "lan1",
+          "link": "up",
+          "temperature_c": 61.08,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 23.92,
+          "tx_dbm": 0.01,
+          "rx_dbm": -3.13,
+          "severity": "ok"
+        },
+        {
+          "interface": "lan2",
+          "link": "up",
+          "temperature_c": 51.27,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 33.73,
+          "tx_dbm": -0.74,
+          "rx_dbm": -5.22,
+          "severity": "ok"
+        },
+        {
+          "interface": "lan3",
+          "link": "up",
+          "temperature_c": 52.24,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 32.76,
+          "tx_dbm": -0.97,
+          "rx_dbm": -5.29,
+          "severity": "ok"
+        },
+        {
+          "interface": "lan4",
+          "link": "up",
+          "temperature_c": 50.71,
+          "temperature_warning_c": 85,
+          "temperature_alarm_c": 90,
+          "temperature_margin_to_warning_c": 34.29,
+          "tx_dbm": -0.54,
+          "rx_dbm": -6.63,
+          "severity": "ok"
+        },
+        {
+          "interface": "lan7",
+          "link": "up",
+          "temperature_c": 60.73,
+          "temperature_warning_c": 75,
+          "temperature_alarm_c": 80,
+          "temperature_margin_to_warning_c": 14.270000000000003,
+          "tx_dbm": -2.87,
+          "rx_dbm": -7.96,
+          "severity": "ok"
+        }
+      ],
+      "performance": {
+        "status_seconds_per_call_approx": 1.14,
+        "sample_seconds_per_call_approx": 0.04,
+        "recorder_rss_mib_approx": 1.46
+      },
+      "alarms": {
+        "ddm_alarm_count": 0,
+        "ddm_warning_count": 0
+      }
+    }
+  ],
+  "publication_policy": {
+    "raw_logs_public": false,
+    "reason": "retrait des adresses, MAC, numeros de serie et identifiants de production"
+  },
+  "non_regression": {
+    "network_wireless_firewall_checksums_unchanged": true,
+    "r4pro_lacp_members_10g": 2,
+    "r4sud_lacp_members_10g": 2,
+    "switch_pro_lacp_members_10g": 2,
+    "switch_sud_lacp_members_10g": 2,
+    "r4pro_mlo_groups": 3,
+    "r4sud_mlo_groups": 3,
+    "r4pro_wans_online": 3,
+    "internet_packet_loss_percent": 0,
+    "homeassistant_running": true,
+    "mosquitto_running": true,
+    "zigbee2mqtt_running": true
+  },
+  "residual_risks": [
+    "R4 Nord non joignable pendant la recette",
+    "absence de tachymetre sur les R4",
+    "switch sans controle de ventilateur expose",
+    "historique volatil en RAM",
+    "/srv du R4 Sud a 80 pour cent",
+    "APK a valider lors de la prochaine compilation complete"
+  ]
+}

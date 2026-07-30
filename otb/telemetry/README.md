@@ -48,6 +48,8 @@ paquet est indépendant de l'architecture (`PKGARCH:=all`).
   `package/otb/luci-app-otb-telemetry/` sur la branche du switch : paquet
   OpenWrt ;
 - `otb/telemetry/TESTS-20260730.md` : recette et valeurs observées ;
+- `otb/telemetry/results/20260730-sanitized.json` : résultats structurés sans
+  secret, adresse privée, MAC ni numéro de série ;
 - `otb/telemetry/LIMITATIONS.md` : limites connues, sans les masquer ;
 - `otb/telemetry/DEPLOYMENT.md` : intégration d'image, déploiement pilote et
   retour arrière ;
