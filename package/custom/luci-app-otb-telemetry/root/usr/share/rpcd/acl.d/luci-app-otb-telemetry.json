@@ -1,0 +1,10 @@
+{
+  "luci-app-otb-telemetry": {
+    "description": "Accès en lecture seule à la télémétrie matérielle OTB",
+    "read": {
+      "ubus": {
+        "luci.otb_telemetry": [ "status", "sample", "history" ]
+      }
+    }
+  }
+}
