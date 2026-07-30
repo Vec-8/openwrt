@@ -1,0 +1,3 @@
+271075531cd75d8d4144846a08f75918bfb2fe58d01a340f9922084633208d8a  target/linux/mediatek/patches-6.18/999-08-net-dsa-mxl862xx-8021q-optional-pre-gro-demux.patch
+3075ab923eefd6581cf7165c47c37b0d6aefcedfb06f611aaa18f931ef772777  package/custom/luci-app-otb-ports/root/usr/share/rpcd/ucode/luci.otb_ports
+0eab48e58cd06ddc3e24629a95211727fdd267227a6281cb7ff4946e7b648bcf  package/custom/luci-app-otb-telemetry/root/usr/share/rpcd/ucode/luci.otb_telemetry

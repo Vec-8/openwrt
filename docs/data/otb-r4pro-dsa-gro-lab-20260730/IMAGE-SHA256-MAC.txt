@@ -1,0 +1,1 @@
+824be2604e972f58fa07e2376028924bc6a0d7f90fd37f1bf2d3c9f018d234bf  openwrt-mediatek-filogic-bananapi_bpi-r4-pro-8x-squashfs-sysupgrade.itb

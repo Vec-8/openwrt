@@ -1,0 +1,20 @@
+af375d27254d net: dsa: prototype optional MxL pre-GRO demux
+23a5cc55b560 luci: correct R4 Sud SFP numbering and publish fresh matrix
+146719762b57 luci: use neutral SFP aliases and document cross tests
+608962072884 luci: add role-aware OTB overview
+cbf95a9f7d34 docs: publish sanitized telemetry test data
+ed59e50705c3 docs: support R4 and switch package layouts
+0c0d1d4129f6 luci: add unified OTB hardware telemetry
+4b07f5f46fe5 upgrade: retain a provisioned loopback mirror
+287b8f6b6350 upgrade: preserve firmware mirror configuration
+0302a9fddf7a upgrade: add signed local firmware mirror
+5d9b8b5120fc homeassistant: accept boolean ZS-300TF water warning
+b250eec18323 luci: ensure OTB physical-port overview is installed
+6caaae11369e mediatek: boost R4 CPU only under sustained load
+b3fd20adf63c build: prepare R4 Pro seq37 unified image
+99a27b71a09c r4sud: align Home Assistant policy metadata with seq36
+6522b8f2543c mediatek: restore proven NAPI256 for final R4 profile
+8be5c2f05ee3 mediatek: balance RSS NAPI and add unified LuCI ports
+9aa24d888a71 mediatek: avoid RX DIM lock contention across RSS queues
+41028ee771e1 mediatek: add strict WAN auto-healing policy
+071efb8cfbbb build: identify persistent RSS RPS images

@@ -1,0 +1,89 @@
+FIT description: ARM64 OpenWrt FIT (Flattened Image Tree)
+Created:         Thu Jul 30 20:01:32 2026
+ Image 0 (kernel-1)
+  Description:  ARM64 OpenWrt Linux-6.18.39
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Kernel Image
+  Compression:  gzip compressed
+  Data Size:    6427576 Bytes = 6276.93 KiB = 6.13 MiB
+  Architecture: AArch64
+  OS:           Linux
+  Load Address: 0x46000000
+  Entry Point:  0x46000000
+  Hash algo:    crc32
+  Hash value:   97b8620a
+  Hash algo:    sha1
+  Hash value:   43747254f680a5a8211190aa4bb62332d220baca
+ Image 1 (fdt-1)
+  Description:  ARM64 OpenWrt bananapi_bpi-r4-pro-8x device tree blob
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Flat Device Tree
+  Compression:  uncompressed
+  Data Size:    49854 Bytes = 48.69 KiB = 0.05 MiB
+  Architecture: AArch64
+  Load Address: 0x45f00000
+  Hash algo:    crc32
+  Hash value:   f6652944
+  Hash algo:    sha1
+  Hash value:   bbf15fbdb5ae303da763d710e63561183e41ba38
+ Image 2 (fdt-mt7988a-bananapi-bpi-r4-pro-8x-emmc)
+  Description:  ARM64 OpenWrt bananapi_bpi-r4-pro-8x device tree overlay mt7988a-bananapi-bpi-r4-pro-8x-emmc
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Flat Device Tree
+  Compression:  uncompressed
+  Data Size:    1550 Bytes = 1.51 KiB = 0.00 MiB
+  Architecture: AArch64
+  Hash algo:    crc32
+  Hash value:   e8638d80
+  Hash algo:    sha1
+  Hash value:   76781bd41422ad8542d20e460acd6622104f41a8
+ Image 3 (fdt-mt7988a-bananapi-bpi-r4-pro-8x-rtc)
+  Description:  ARM64 OpenWrt bananapi_bpi-r4-pro-8x device tree overlay mt7988a-bananapi-bpi-r4-pro-8x-rtc
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Flat Device Tree
+  Compression:  uncompressed
+  Data Size:    289 Bytes = 0.28 KiB = 0.00 MiB
+  Architecture: AArch64
+  Hash algo:    crc32
+  Hash value:   36955f7f
+  Hash algo:    sha1
+  Hash value:   a89c637026705f22e08d55fbeda1722886773a54
+ Image 4 (fdt-mt7988a-bananapi-bpi-r4-pro-8x-sd)
+  Description:  ARM64 OpenWrt bananapi_bpi-r4-pro-8x device tree overlay mt7988a-bananapi-bpi-r4-pro-8x-sd
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Flat Device Tree
+  Compression:  uncompressed
+  Data Size:    1478 Bytes = 1.44 KiB = 0.00 MiB
+  Architecture: AArch64
+  Hash algo:    crc32
+  Hash value:   ac595aa5
+  Hash algo:    sha1
+  Hash value:   acf48be725924d27950e4675109d73dec8fc29e4
+ Image 5 (rootfs-1)
+  Description:  ARM64 OpenWrt bananapi_bpi-r4-pro-8x rootfs
+  Created:      Thu Jul 30 20:01:32 2026
+  Type:         Filesystem Image
+  Compression:  uncompressed
+  Data Size:    26406912 Bytes = 25788.00 KiB = 25.18 MiB
+  Hash algo:    crc32
+  Hash value:   d55f303e
+  Hash algo:    sha1
+  Hash value:   a12c6b388503dc0285d2ab583ecb8992416b367c
+ Default Configuration: 'config-mt7988a-bananapi-bpi-r4-pro-8x'
+ Configuration 0 (config-mt7988a-bananapi-bpi-r4-pro-8x)
+  Description:  OpenWrt bananapi_bpi-r4-pro-8x
+  Kernel:       kernel-1
+  FDT:          fdt-1
+  Loadables:    rootfs-1
+ Configuration 1 (mt7988a-bananapi-bpi-r4-pro-8x-emmc)
+  Description:  OpenWrt bananapi_bpi-r4-pro-8x overlay mt7988a-bananapi-bpi-r4-pro-8x-emmc
+  Kernel:       unavailable
+  FDT:          fdt-mt7988a-bananapi-bpi-r4-pro-8x-emmc
+ Configuration 2 (mt7988a-bananapi-bpi-r4-pro-8x-rtc)
+  Description:  OpenWrt bananapi_bpi-r4-pro-8x overlay mt7988a-bananapi-bpi-r4-pro-8x-rtc
+  Kernel:       unavailable
+  FDT:          fdt-mt7988a-bananapi-bpi-r4-pro-8x-rtc
+ Configuration 3 (mt7988a-bananapi-bpi-r4-pro-8x-sd)
+  Description:  OpenWrt bananapi_bpi-r4-pro-8x overlay mt7988a-bananapi-bpi-r4-pro-8x-sd
+  Kernel:       unavailable
+  FDT:          fdt-mt7988a-bananapi-bpi-r4-pro-8x-sd
