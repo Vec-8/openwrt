@@ -1,3 +1,0 @@
-#!/bin/sh
-printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n'
-/usr/sbin/otb-luci-status 2>/dev/null | tee /www/otb-status.json

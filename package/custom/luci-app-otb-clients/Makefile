@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-otb-clients
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=7
+PKG_RELEASE:=8
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=OTB
 
@@ -20,10 +20,9 @@ endef
 define Package/luci-app-otb-clients/description
  Read-only diagnostics for Wi-Fi and directly attached Ethernet clients seen by
  the BPI-R4 Pro, Sud and Nord nodes. The dedicated luci-app-otb-ports
- dependency owns the global physical-port, LACP and effective-VLAN view. This
- package restores the pre-update OTB WAN/equipment dashboard on the R4 Pro.
- The collector never changes network, Wi-Fi, bridge, VLAN, DSA or firewall
- configuration.
+ dependency owns the global physical-port, LACP and effective-VLAN view. The
+ common luci-app-otb-overview package owns the read-only overview. The collector
+ never changes network, Wi-Fi, bridge, VLAN, DSA or firewall configuration.
 endef
 
 define Package/luci-app-otb-clients/conffiles
@@ -38,7 +37,6 @@ define Package/luci-app-otb-clients/install
 	$(INSTALL_CONF) ./root/etc/config/otb-clients $(1)/etc/config/otb-clients
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/otb-clients $(1)/etc/init.d/otb-clients
-	$(INSTALL_BIN) ./root/etc/init.d/otb-luci-restore $(1)/etc/init.d/otb-luci-restore
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./root/usr/sbin/otb-clients $(1)/usr/sbin/otb-clients
 	$(INSTALL_BIN) ./root/usr/sbin/otb-clients-snapshot $(1)/usr/sbin/otb-clients-snapshot
@@ -53,15 +51,29 @@ define Package/luci-app-otb-clients/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/otb-clients/lacp.js $(1)/www/luci-static/resources/view/otb-clients/lacp.js
 	$(INSTALL_DIR) $(1)/usr/libexec/otb-lacp
 	$(INSTALL_BIN) ./root/usr/libexec/otb-lacp/status.sh $(1)/usr/libexec/otb-lacp/status.sh
-	$(INSTALL_DIR) $(1)/usr/share/otb-luci-overrides
-	$(CP) ./root/usr/share/otb-luci-overrides/* $(1)/usr/share/otb-luci-overrides/
 endef
 
 define Package/luci-app-otb-clients/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	/etc/init.d/otb-luci-restore enable >/dev/null 2>&1 || true
-	/etc/init.d/otb-luci-restore start >/dev/null 2>&1 || true
+	# Retire the former mutable Pro dashboard. Its monitoring data is now
+	# exposed by luci-app-otb-overview through read-only ubus RPC methods.
+	/etc/init.d/otb-luci-restore stop >/dev/null 2>&1 || true
+	/etc/init.d/otb-luci-restore disable >/dev/null 2>&1 || true
+	rm -rf /usr/share/otb-luci-overrides/r4pro
+	rm -f \
+		/etc/init.d/otb-luci-restore \
+		/usr/sbin/otb-luci-status \
+		/usr/sbin/otb-luci-wan-restart \
+		/usr/sbin/otb-refresh-luci-json \
+		/usr/share/rpcd/acl.d/otb-luci-status.json \
+		/www/luci-static/resources/view/status/include/92_otb_status.js \
+		/www/cgi-bin/otb-device-add \
+		/www/cgi-bin/otb-device-del \
+		/www/cgi-bin/otb-wan-restart \
+		/www/cgi-bin/otb-status-json \
+		/www/otb-status.json
+	rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
 }
 exit 0
 endef

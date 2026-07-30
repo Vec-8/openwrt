@@ -1,0 +1,11 @@
+#!/bin/sh
+
+while :; do
+	/usr/sbin/otb-overview-snapshot >/dev/null 2>&1 || true
+	interval="$(uci -q get otb-overview.main.interval)"
+	case "$interval" in
+		''|*[!0-9]*) interval=60 ;;
+	esac
+	[ "$interval" -ge 15 ] 2>/dev/null || interval=15
+	sleep "$interval"
+done

@@ -1,3 +1,0 @@
-#!/bin/sh
-/usr/sbin/otb-luci-status >/www/otb-status.json.tmp && mv /www/otb-status.json.tmp /www/otb-status.json
-/usr/sbin/otb-port-status >/www/otb-ports.json.tmp && mv /www/otb-ports.json.tmp /www/otb-ports.json

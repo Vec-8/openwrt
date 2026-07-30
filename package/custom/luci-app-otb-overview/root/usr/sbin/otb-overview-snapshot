@@ -1,0 +1,500 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+export LC_ALL=C
+
+STATUS_DIR='/tmp/otb-overview'
+STATUS_FILE="$STATUS_DIR/status.json"
+WORK_DIR="$(mktemp -d /tmp/otb-overview.XXXXXX)" || exit 1
+RAW_TARGETS="$WORK_DIR/targets.raw"
+TARGETS="$WORK_DIR/targets"
+WIFI_INTERFACES="$WORK_DIR/wifi"
+
+cleanup() {
+	rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$STATUS_DIR" || exit 1
+: >"$RAW_TARGETS"
+: >"$WIFI_INTERFACES"
+
+safe_field() {
+	printf '%s' "$1" | tr '|\t\r\n' '/   '
+}
+
+valid_ipv4() {
+	case "$1" in
+		''|*[!0-9.]*) return 1 ;;
+	esac
+
+	printf '%s\n' "$1" | awk -F. '
+		NF != 4 { bad = 1 }
+		{
+			for (i = 1; i <= 4; i++)
+				if ($i == "" || $i < 0 || $i > 255)
+					bad = 1
+		}
+		END { exit bad }
+	' >/dev/null 2>&1
+}
+
+append_target() {
+	local id="$1"
+	local name="$2"
+	local role_name="$3"
+	local group_name="$4"
+	local ip="$5"
+	local planned="${6:-0}"
+	local source="${7:-config}"
+
+	valid_ipv4 "$ip" || return 0
+	[ -n "$name" ] || name="$ip"
+	[ -n "$role_name" ] || role_name='Équipement réseau'
+	[ -n "$group_name" ] || group_name='Équipements'
+	[ "$planned" = 1 ] || planned=0
+
+	printf '%s|%s|%s|%s|%s|%s|%s\n' \
+		"$(safe_field "$id")" \
+		"$(safe_field "$name")" \
+		"$(safe_field "$role_name")" \
+		"$(safe_field "$group_name")" \
+		"$ip" "$planned" "$(safe_field "$source")" >>"$RAW_TARGETS"
+}
+
+add_overview_target() {
+	local section="$1"
+	local name role_name group_name ip planned
+
+	config_get name "$section" name
+	config_get role_name "$section" role
+	config_get group_name "$section" group
+	config_get ip "$section" ip
+	config_get_bool planned "$section" planned 0
+	append_target "$section" "$name" "$role_name" "$group_name" "$ip" \
+		"$planned" 'infrastructure'
+}
+
+add_otb_device() {
+	local section="$1"
+	local name role_name group_name ip planned
+
+	config_get name "$section" name
+	config_get role_name "$section" role
+	config_get group_name "$section" group
+	config_get ip "$section" ip
+	config_get_bool planned "$section" planned 0
+	append_target "$section" "$name" "$role_name" "$group_name" "$ip" \
+		"$planned" 'inventaire OTB'
+}
+
+dhcp_group() {
+	case "$1" in
+		10.0.10.*) printf '%s' 'VLAN 10 · Privé / administration' ;;
+		10.0.20.*) printf '%s' 'VLAN 20 · Invités' ;;
+		10.0.30.*) printf '%s' 'VLAN 30 · IoT / domotique' ;;
+		*) printf '%s' 'Réservations DHCP statiques' ;;
+	esac
+}
+
+dhcp_role() {
+	case "$1" in
+		10.0.10.*) printf '%s' 'Client privé / administration' ;;
+		10.0.20.*) printf '%s' 'Client invité' ;;
+		10.0.30.*) printf '%s' 'Équipement IoT / domotique' ;;
+		*) printf '%s' 'Réservation DHCP statique' ;;
+	esac
+}
+
+add_dhcp_host() {
+	local section="$1"
+	local name ip
+
+	config_get name "$section" name
+	config_get ip "$section" ip
+	[ -n "$ip" ] || return 0
+	append_target "$section" "$name" "$(dhcp_role "$ip")" \
+		"$(dhcp_group "$ip")" "$ip" 0 'DHCP statique'
+}
+
+collect_wifi_interface() {
+	local section="$1"
+	local mode ssid networks devices disabled mlo active
+
+	config_get mode "$section" mode
+	[ "$mode" = ap ] || return 0
+	config_get ssid "$section" ssid
+	config_get networks "$section" network
+	config_get devices "$section" device
+	config_get_bool disabled "$section" disabled 0
+	config_get_bool mlo "$section" mlo 0
+	[ "$disabled" = 0 ] && active=1 || active=0
+
+	printf '%s|%s|%s|%s|%s|%s\n' \
+		"$(safe_field "$section")" \
+		"$(safe_field "$ssid")" \
+		"$(safe_field "$networks")" \
+		"$(safe_field "$devices")" \
+		"$mlo" "$active" >>"$WIFI_INTERFACES"
+}
+
+board_name="$(cat /tmp/sysinfo/board_name 2>/dev/null || printf generic)"
+model="$(cat /tmp/sysinfo/model 2>/dev/null || printf OpenWrt)"
+hostname="$(cat /proc/sys/kernel/hostname 2>/dev/null || printf OpenWrt)"
+
+case "$board_name:$hostname" in
+	bananapi,bpi-r4-pro-8x:*)
+		device_role='r4pro'
+		role_label='R4 Pro · cœur réseau'
+		scope='all_static'
+		;;
+	bananapi,bpi-r4:*Nord*|bananapi,bpi-r4:*nord*)
+		device_role='r4nord'
+		role_label='R4 Nord · point d’accès'
+		scope='infrastructure'
+		;;
+	bananapi,bpi-r4:*)
+		device_role='r4sud'
+		role_label='R4 Sud · point d’accès et domotique'
+		scope='infrastructure'
+		;;
+	*swtgw3c8f*:*|*swtgw2c8f*:*)
+		device_role='switch'
+		role_label='Switch cœur OpenWrt'
+		scope='infrastructure'
+		;;
+	*)
+		device_role='openwrt'
+		role_label='Équipement OpenWrt'
+		scope='infrastructure'
+		;;
+esac
+
+if [ "$device_role" = r4pro ]; then
+	# Keep the local router first, then prefer explicit OTB names/roles over
+	# generic DHCP names when the same address appears in both sources.
+	append_target r4_pro 'R4 Pro' 'Cœur réseau principal' \
+		'Infrastructure R4' '10.0.10.254' 0 'local'
+
+	if [ -f /etc/config/otb_devices ]; then
+		config_load otb_devices
+		config_foreach add_otb_device device
+	fi
+
+	if [ -f /etc/config/dhcp ]; then
+		config_load dhcp
+		config_foreach add_dhcp_host host
+	fi
+
+	config_load otb-overview
+	config_foreach add_overview_target target
+else
+	config_load otb-overview
+	config_foreach add_overview_target target
+fi
+
+# De-duplicate by IP while preserving the richer, earlier source.
+awk -F '|' '
+	NF >= 7 && !seen[$5]++ {
+		count++
+		print count "|" $0
+	}
+' "$RAW_TARGETS" >"$TARGETS"
+
+# One short ICMP probe per target, in parallel. This bounds a complete
+# inventory refresh to roughly one second even on the R4 Pro.
+while IFS='|' read -r index id name role_name group_name ip planned source; do
+	(
+		output="$(ping -c 1 -W 1 "$ip" 2>&1)"
+		if [ "$?" -eq 0 ]; then
+			latency="$(printf '%s\n' "$output" |
+				sed -n 's/.*time[=<]\([0-9.][0-9.]*\)[[:space:]]*ms.*/\1/p' |
+				head -n 1)"
+			printf 'online|%s\n' "$latency" >"$WORK_DIR/ping.$index"
+		else
+			printf 'offline|\n' >"$WORK_DIR/ping.$index"
+		fi
+	) &
+done <"$TARGETS"
+wait
+
+if [ -f /etc/config/wireless ]; then
+	config_load wireless
+	config_foreach collect_wifi_interface wifi-iface
+fi
+
+json_init
+json_add_int schema 1
+json_add_int collected_at "$(date +%s)"
+json_add_string role "$device_role"
+json_add_string role_label "$role_label"
+json_add_string hostname "$hostname"
+json_add_string board_name "$board_name"
+json_add_string model "$model"
+json_add_boolean read_only 1
+
+json_add_object supervision
+json_add_string scope "$scope"
+if [ "$scope" = all_static ]; then
+	json_add_string scope_label \
+		'Toutes les IP statiques nommées et l’infrastructure OTB'
+else
+	json_add_string scope_label \
+		'Infrastructure R4 et deux switches uniquement'
+fi
+json_add_array devices
+
+total=0
+online_count=0
+offline_count=0
+planned_count=0
+
+while IFS='|' read -r index id name role_name group_name ip planned source; do
+	state='offline'
+	latency=''
+	if [ -f "$WORK_DIR/ping.$index" ]; then
+		IFS='|' read -r state latency <"$WORK_DIR/ping.$index"
+	fi
+
+	if [ "$state" = online ]; then
+		online=1
+		online_count=$((online_count + 1))
+	elif [ "$planned" = 1 ]; then
+		online=0
+		state='planned'
+		planned_count=$((planned_count + 1))
+	else
+		online=0
+		offline_count=$((offline_count + 1))
+	fi
+	total=$((total + 1))
+
+	json_add_object
+	json_add_string id "$id"
+	json_add_string name "$name"
+	json_add_string role "$role_name"
+	json_add_string group "$group_name"
+	json_add_string ip "$ip"
+	json_add_string source "$source"
+	json_add_string state "$state"
+	json_add_boolean online "$online"
+	json_add_boolean planned "$planned"
+	[ -z "$latency" ] || json_add_string latency_ms "$latency"
+	json_close_object
+done <"$TARGETS"
+
+json_close_array
+json_add_object summary
+json_add_int total "$total"
+json_add_int online "$online_count"
+json_add_int offline "$offline_count"
+json_add_int planned "$planned_count"
+json_close_object
+json_close_object
+
+json_add_array wans
+wan_total=0
+wan_online=0
+wan_heal=0
+if [ "$device_role" = r4pro ]; then
+	mwan_status="$(ubus -S call mwan3 status 2>/dev/null || printf '{}')"
+
+	for wan_spec in \
+		'wan_fibre|Fibre' \
+		'wan5g_free|5G Free' \
+		'wan5g_BYG|5G Bouygues'
+	do
+		wan_name="${wan_spec%%|*}"
+		wan_label="${wan_spec#*|}"
+		status="$(jsonfilter -s "$mwan_status" \
+			-e "@.interfaces.$wan_name.status" 2>/dev/null)"
+		tracking="$(jsonfilter -s "$mwan_status" \
+			-e "@.interfaces.$wan_name.tracking" 2>/dev/null)"
+		uptime="$(jsonfilter -s "$mwan_status" \
+			-e "@.interfaces.$wan_name.uptime" 2>/dev/null)"
+		score="$(jsonfilter -s "$mwan_status" \
+			-e "@.interfaces.$wan_name.score" 2>/dev/null)"
+		iface_status="$(ubus -S call "network.interface.$wan_name" status \
+			2>/dev/null || printf '{}')"
+		device="$(jsonfilter -s "$iface_status" -e '@.l3_device' 2>/dev/null)"
+		address="$(jsonfilter -s "$iface_status" \
+			-e '@["ipv4-address"][0].address' 2>/dev/null)"
+
+		[ -n "$status" ] || status='unknown'
+		[ "$status" = online ] && wan_is_online=1 || wan_is_online=0
+		wan_total=$((wan_total + 1))
+		wan_online=$((wan_online + wan_is_online))
+
+		case "$uptime" in ''|*[!0-9]*) uptime=0 ;; esac
+		case "$score" in ''|*[!0-9]*) score=0 ;; esac
+
+		json_add_object
+		json_add_string name "$wan_name"
+		json_add_string label "$wan_label"
+		json_add_string status "$status"
+		json_add_boolean online "$wan_is_online"
+		json_add_string tracking "${tracking:-unknown}"
+		json_add_int uptime_s "$uptime"
+		json_add_int score "$score"
+		json_add_string device "${device:--}"
+		json_add_string address "${address:--}"
+		json_close_object
+	done
+
+	service_state="$(ubus -S call service list \
+		'{"name":"otb-wan-heal"}' 2>/dev/null || printf '{}')"
+	[ "$(jsonfilter -s "$service_state" \
+		-e '@["otb-wan-heal"].instances.*.running' 2>/dev/null |
+		head -n 1)" = true ] && wan_heal=1
+fi
+json_close_array
+json_add_object wan_summary
+json_add_int total "$wan_total"
+json_add_int online "$wan_online"
+json_add_boolean heal_running "$wan_heal"
+json_close_object
+
+json_add_object wifi
+json_add_array radios
+radios_up=0
+wireless_state="$(ubus -S call network.wireless status 2>/dev/null || printf '{}')"
+for radio in radio0 radio1 radio2; do
+	present="$(jsonfilter -s "$wireless_state" -e "@.$radio.config.type" \
+		2>/dev/null)"
+	[ -n "$present" ] || continue
+	up="$(jsonfilter -s "$wireless_state" -e "@.$radio.up" 2>/dev/null)"
+	[ "$up" = true ] && radio_up=1 || radio_up=0
+	radios_up=$((radios_up + radio_up))
+	band="$(jsonfilter -s "$wireless_state" \
+		-e "@.$radio.config.band" 2>/dev/null)"
+	channel="$(jsonfilter -s "$wireless_state" \
+		-e "@.$radio.config.channel" 2>/dev/null)"
+	htmode="$(jsonfilter -s "$wireless_state" \
+		-e "@.$radio.config.htmode" 2>/dev/null)"
+	country="$(jsonfilter -s "$wireless_state" \
+		-e "@.$radio.config.country" 2>/dev/null)"
+	txpower="$(jsonfilter -s "$wireless_state" \
+		-e "@.$radio.config.txpower" 2>/dev/null)"
+	case "$txpower" in ''|*[!0-9]*) txpower=0 ;; esac
+
+	json_add_object
+	json_add_string name "$radio"
+	json_add_boolean up "$radio_up"
+	json_add_string band "${band:--}"
+	json_add_string channel "${channel:--}"
+	json_add_string htmode "${htmode:--}"
+	json_add_string country "${country:--}"
+	json_add_int txpower_dbm "$txpower"
+	json_close_object
+done
+json_close_array
+
+json_add_array interfaces
+mlo_active=0
+wifi_active=0
+while IFS='|' read -r section ssid networks devices mlo active; do
+	[ "$active" = 1 ] && wifi_active=$((wifi_active + 1))
+	if [ "$mlo" = 1 ] && [ "$active" = 1 ]; then
+		mlo_active=$((mlo_active + 1))
+	fi
+
+	json_add_object
+	json_add_string section "$section"
+	json_add_string ssid "$ssid"
+	json_add_string networks "$networks"
+	json_add_string radios "$devices"
+	json_add_boolean mlo "$mlo"
+	json_add_boolean active "$active"
+	json_close_object
+done <"$WIFI_INTERFACES"
+json_close_array
+json_add_int radios_up "$radios_up"
+json_add_int interfaces_active "$wifi_active"
+json_add_int mlo_active "$mlo_active"
+json_close_object
+
+json_add_array services
+if [ "$device_role" = r4sud ] && command -v docker >/dev/null 2>&1; then
+	for service_spec in \
+		'otb-homeassistant|Home Assistant' \
+		'otb-mosquitto|Mosquitto MQTT' \
+		'otb-zigbee2mqtt|Zigbee2MQTT'
+	do
+		container="${service_spec%%|*}"
+		service_label="${service_spec#*|}"
+		info="$(docker inspect --format \
+			'{{.State.Status}}|{{.RestartCount}}|{{.Config.Image}}' \
+			"$container" 2>/dev/null)"
+		if [ -n "$info" ]; then
+			container_state="${info%%|*}"
+			remainder="${info#*|}"
+			restarts="${remainder%%|*}"
+			image="${remainder#*|}"
+			exists=1
+		else
+			container_state='absent'
+			restarts=0
+			image='—'
+			exists=0
+		fi
+		[ "$container_state" = running ] && running=1 || running=0
+		case "$restarts" in ''|*[!0-9]*) restarts=0 ;; esac
+
+		json_add_object
+		json_add_string name "$container"
+		json_add_string label "$service_label"
+		json_add_string state "$container_state"
+		json_add_string image "$image"
+		json_add_boolean exists "$exists"
+		json_add_boolean running "$running"
+		json_add_int restart_count "$restarts"
+		json_close_object
+	done
+fi
+json_close_array
+
+add_storage_json() {
+	local path="$1"
+	local label="$2"
+	local row filesystem total used available percent mounted
+
+	[ -e "$path" ] || return 0
+	row="$(df -Pk "$path" 2>/dev/null | awk 'NR == 2 { print }')"
+	[ -n "$row" ] || return 0
+	set -- $row
+	filesystem="$1"
+	total="$2"
+	used="$3"
+	available="$4"
+	percent="${5%%%}"
+	mounted="$6"
+	case "$total:$used:$available:$percent" in
+		*[!0-9:]*|'') return 0 ;;
+	esac
+
+	json_add_object
+	json_add_string path "$path"
+	json_add_string label "$label"
+	json_add_string filesystem "$filesystem"
+	json_add_string mounted_on "$mounted"
+	json_add_int total_kib "$total"
+	json_add_int used_kib "$used"
+	json_add_int available_kib "$available"
+	json_add_int used_percent "$percent"
+	json_close_object
+}
+
+json_add_array storage
+if [ "$device_role" = r4sud ]; then
+	add_storage_json /srv 'Données domotiques /srv'
+fi
+add_storage_json /overlay 'Système persistant /overlay'
+json_close_array
+
+json_dump >"$STATUS_FILE.new" || exit 1
+chmod 0644 "$STATUS_FILE.new"
+mv "$STATUS_FILE.new" "$STATUS_FILE"
+
+exit 0
