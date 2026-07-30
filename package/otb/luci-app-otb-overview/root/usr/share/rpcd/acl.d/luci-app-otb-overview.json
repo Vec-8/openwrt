@@ -1,0 +1,13 @@
+{
+  "luci-app-otb-overview": {
+    "description": "Accès en lecture seule à la synthèse OTB",
+    "read": {
+      "ubus": {
+        "luci.otb_overview": [ "status" ],
+        "luci.otb_ports": [ "status" ],
+        "luci.otb_telemetry": [ "status" ],
+        "luci.otb-clients": [ "getStatus" ]
+      }
+    }
+  }
+}

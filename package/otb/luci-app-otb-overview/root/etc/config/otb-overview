@@ -1,0 +1,37 @@
+config overview 'main'
+	option interval '60'
+
+# The R4 Pro merges these infrastructure nodes with every named static DHCP
+# reservation and every explicitly documented /etc/config/otb_devices entry.
+# Other OpenWrt nodes intentionally monitor only this infrastructure set.
+config target 'r4_pro'
+	option name 'R4 Pro'
+	option role 'Cœur réseau principal'
+	option group 'Infrastructure R4'
+	option ip '10.0.10.254'
+
+config target 'r4_sud'
+	option name 'R4 Sud'
+	option role 'Point d’accès Sud · Domotique'
+	option group 'Infrastructure R4'
+	option ip '10.0.10.1'
+
+config target 'r4_nord'
+	option name 'R4 Nord'
+	option role 'Point d’accès Nord'
+	option group 'Infrastructure R4'
+	option ip '10.0.10.2'
+	option planned '1'
+
+config target 'switch_coeur'
+	option name 'Switch cœur'
+	option role 'Cœur 10G'
+	option group 'Switches'
+	option ip '10.0.10.10'
+
+config target 'switch_dependance'
+	option name 'Switch dépendance'
+	option role 'Distribution dépendance'
+	option group 'Switches'
+	option ip '10.0.10.11'
+	option planned '1'
