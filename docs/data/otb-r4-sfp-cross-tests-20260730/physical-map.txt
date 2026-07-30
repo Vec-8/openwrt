@@ -1,0 +1,2 @@
+R4 Pro: SFP1/LAN=mxl_lan5 ; SFP2/WAN=eth1
+R4 Sud: SFP1/LAN=sfp-lan ; SFP2/WAN=sfp-wan

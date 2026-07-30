@@ -1,0 +1,28 @@
+=== PRO LACP APRES STABILISATION ===
+MII Status: up
+	Aggregator ID: 2
+	Number of ports: 2
+Slave Interface: mxl_lan5
+MII Status: up
+Aggregator ID: 2
+Actor Churn State: none
+Partner Churn State: none
+Slave Interface: eth1
+MII Status: up
+Aggregator ID: 2
+Actor Churn State: none
+Partner Churn State: none
+=== SUD LACP APRES STABILISATION ===
+MII Status: up
+	Aggregator ID: 1
+	Number of ports: 2
+Slave Interface: sfp-lan
+MII Status: up
+Aggregator ID: 1
+Actor Churn State: none
+Partner Churn State: none
+Slave Interface: sfp-wan
+MII Status: up
+Aggregator ID: 1
+Actor Churn State: none
+Partner Churn State: none

@@ -1,0 +1,131 @@
+=== PRODUCTION PRO ===
+BOND
+MII Status: up
+	Aggregator ID: 2
+	Number of ports: 2
+Slave Interface: mxl_lan5
+MII Status: up
+Speed: 10000 Mbps
+Aggregator ID: 2
+Actor Churn State: monitoring
+Partner Churn State: monitoring
+Slave Interface: eth1
+MII Status: up
+Speed: 10000 Mbps
+Aggregator ID: 2
+Actor Churn State: none
+Partner Churn State: none
+VLANS
+bond-trunk        5
+WIFI
+	Interface phy0.0-ap2
+		ssid Home-2G
+		channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+	Interface ap-mld2
+		ssid Home-5G
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 36 (5180 MHz), width: 160 MHz, center1: 5250 MHz
+	Interface ap-mld1
+		ssid Trefflay
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 36 (5180 MHz), width: 160 MHz, center1: 5250 MHz
+		   channel 37 (6135 MHz), width: 320 MHz, center1: 6105 MHz
+	Interface ap-mld0
+		ssid Ti-Kanevedenn
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 36 (5180 MHz), width: 160 MHz, center1: 5250 MHz
+		   channel 37 (6135 MHz), width: 320 MHz, center1: 6105 MHz
+INTERNET
+PING 1.1.1.1 (1.1.1.1): 56 data bytes
+64 bytes from 1.1.1.1: seq=0 ttl=52 time=56.607 ms
+64 bytes from 1.1.1.1: seq=1 ttl=52 time=63.365 ms
+64 bytes from 1.1.1.1: seq=2 ttl=52 time=56.052 ms
+
+--- 1.1.1.1 ping statistics ---
+3 packets transmitted, 3 packets received, 0% packet loss
+round-trip min/avg/max = 56.052/58.674/63.365 ms
+Server:		127.0.0.1
+Address:	127.0.0.1:53
+
+Non-authoritative answer:
+Name:	openwrt.org
+Address: 2a03:b0c0:3:d0::1a51:c001
+
+Non-authoritative answer:
+Name:	openwrt.org
+Address: 64.226.122.113
+
+RUNTIME
+net.core.netdev_budget = 300
+net.core.gro_normal_batch = 8
+/sys/class/net/eth1/queues/rx-0/rps_cpus=f
+/sys/class/net/eth1/queues/rx-1/rps_cpus=f
+/sys/class/net/eth1/queues/rx-2/rps_cpus=f
+/sys/class/net/eth1/queues/rx-3/rps_cpus=f
+/sys/class/net/eth2/queues/rx-0/rps_cpus=f
+/sys/class/net/eth2/queues/rx-1/rps_cpus=f
+/sys/class/net/eth2/queues/rx-2/rps_cpus=f
+/sys/class/net/eth2/queues/rx-3/rps_cpus=f
+PROCESS
+TEMP
+/sys/class/thermal/thermal_zone0/temp=57429
+=== PRODUCTION SUD ===
+BOND
+MII Status: up
+	Aggregator ID: 1
+	Number of ports: 2
+Slave Interface: sfp-lan
+MII Status: up
+Speed: 10000 Mbps
+Aggregator ID: 1
+Actor Churn State: monitoring
+Partner Churn State: monitoring
+Slave Interface: sfp-wan
+MII Status: up
+Speed: 10000 Mbps
+Aggregator ID: 1
+Actor Churn State: none
+Partner Churn State: none
+VLANS
+bond-trunk        5
+WIFI
+	Interface phy0.0-ap2
+		ssid Home-2G
+		channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+	Interface ap-mld2
+		ssid Home-5G
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 100 (5500 MHz), width: 160 MHz, center1: 5570 MHz
+	Interface ap-mld1
+		ssid Trefflay
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 100 (5500 MHz), width: 160 MHz, center1: 5570 MHz
+		   channel 37 (6135 MHz), width: 320 MHz, center1: 6105 MHz
+	Interface ap-mld0
+		ssid Ti-Kanevedenn
+		   channel 11 (2462 MHz), width: 40 MHz, center1: 2452 MHz
+		   channel 100 (5500 MHz), width: 160 MHz, center1: 5570 MHz
+		   channel 37 (6135 MHz), width: 320 MHz, center1: 6105 MHz
+INTERNET
+PING 1.1.1.1 (1.1.1.1): 56 data bytes
+64 bytes from 1.1.1.1: seq=0 ttl=50 time=24.683 ms
+64 bytes from 1.1.1.1: seq=1 ttl=50 time=43.493 ms
+64 bytes from 1.1.1.1: seq=2 ttl=50 time=33.246 ms
+
+--- 1.1.1.1 ping statistics ---
+3 packets transmitted, 3 packets received, 0% packet loss
+round-trip min/avg/max = 24.683/33.807/43.493 ms
+Server:		127.0.0.1
+Address:	127.0.0.1:53
+
+Non-authoritative answer:
+Name:	openwrt.org
+Address: 64.226.122.113
+
+Non-authoritative answer:
+Name:	openwrt.org
+Address: 2a03:b0c0:3:d0::1a51:c001
+
+PROCESS
+TEMP
+/sys/class/thermal/thermal_zone0/temp=58541

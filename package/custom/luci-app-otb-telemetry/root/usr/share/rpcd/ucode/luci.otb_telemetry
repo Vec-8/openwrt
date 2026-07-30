@@ -355,7 +355,7 @@ function optical_display_name(board_name, name) {
 		return name == 'mxl_lan5' ? 'SFP1' : (name == 'eth1' ? 'SFP2' : name);
 
 	if (board_name == 'bananapi,bpi-r4')
-		return name == 'sfp-wan' ? 'SFP1' : (name == 'sfp-lan' ? 'SFP2' : name);
+		return name == 'sfp-lan' ? 'SFP1' : (name == 'sfp-wan' ? 'SFP2' : name);
 
 	return name;
 }

@@ -78,13 +78,13 @@ function port_identity(board_name, name) {
 		}
 	}
 	else if (board_name == 'bananapi,bpi-r4') {
-		if (name == 'sfp-wan') {
+		if (name == 'sfp-lan') {
 			display_name = 'SFP1';
-			hardware_path = 'SoC direct · XFI0';
-		}
-		else if (name == 'sfp-lan') {
-			display_name = 'SFP2';
 			hardware_path = 'SoC direct · XFI1';
+		}
+		else if (name == 'sfp-wan') {
+			display_name = 'SFP2';
+			hardware_path = 'SoC direct · XFI0';
 		}
 	}
 

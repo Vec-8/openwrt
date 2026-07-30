@@ -1,0 +1,688 @@
+{
+  "nomenclature": {
+    "R4 Pro": {
+      "SFP1/LAN": "mxl_lan5",
+      "SFP2/WAN": "eth1"
+    },
+    "R4 Sud": {
+      "SFP1/LAN": "sfp-lan",
+      "SFP2/WAN": "sfp-wan"
+    }
+  },
+  "throughput": [
+    {
+      "cas": "SFP1-LAN__SFP1-LAN",
+      "direction": "SUD-vers-PRO",
+      "recu_Gbit_s": 6.131777,
+      "emis_Gbit_s": 6.132413,
+      "retransmissions": 14132,
+      "duree_s": 9.950035
+    },
+    {
+      "cas": "SFP1-LAN__SFP1-LAN",
+      "direction": "PRO-vers-SUD",
+      "recu_Gbit_s": 7.86038,
+      "emis_Gbit_s": 7.872761,
+      "retransmissions": 6245,
+      "duree_s": 9.978599
+    },
+    {
+      "cas": "SFP1-LAN__SFP2-WAN",
+      "direction": "SUD-vers-PRO",
+      "recu_Gbit_s": 6.143587,
+      "emis_Gbit_s": 6.144009,
+      "retransmissions": 7002,
+      "duree_s": 9.947463
+    },
+    {
+      "cas": "SFP1-LAN__SFP2-WAN",
+      "direction": "PRO-vers-SUD",
+      "recu_Gbit_s": 7.824334,
+      "emis_Gbit_s": 7.820022,
+      "retransmissions": 16588,
+      "duree_s": 9.981283
+    },
+    {
+      "cas": "SFP2-WAN__SFP1-LAN",
+      "direction": "SUD-vers-PRO",
+      "recu_Gbit_s": 8.001935,
+      "emis_Gbit_s": 7.988234,
+      "retransmissions": 22615,
+      "duree_s": 9.968629
+    },
+    {
+      "cas": "SFP2-WAN__SFP1-LAN",
+      "direction": "PRO-vers-SUD",
+      "recu_Gbit_s": 7.371661,
+      "emis_Gbit_s": 7.378762,
+      "retransmissions": 9858,
+      "duree_s": 9.949697
+    },
+    {
+      "cas": "SFP2-WAN__SFP2-WAN",
+      "direction": "SUD-vers-PRO",
+      "recu_Gbit_s": 8.235337,
+      "emis_Gbit_s": 8.241465,
+      "retransmissions": 12285,
+      "duree_s": 9.946867
+    },
+    {
+      "cas": "SFP2-WAN__SFP2-WAN",
+      "direction": "PRO-vers-SUD",
+      "recu_Gbit_s": 7.781858,
+      "emis_Gbit_s": 7.79266,
+      "retransmissions": 13711,
+      "duree_s": 9.974724
+    }
+  ],
+  "counter_deltas": {
+    "SFP1-LAN__SFP1-LAN-SUD-vers-PRO": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 8390506522,
+          "tx": 3134528,
+          "rxp": 5515022,
+          "txp": 40438,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 8810079651,
+          "tx": 3336226,
+          "rxp": 5790778,
+          "txp": 42144,
+          "rxd": 2284,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 8390506522,
+          "tx": 3134528,
+          "rxp": 5515022,
+          "txp": 40438,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 2976862,
+          "tx": 8808539130,
+          "rxp": 41668,
+          "txp": 5804641,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 2976862,
+          "tx": 8808539130,
+          "rxp": 41668,
+          "txp": 5804641,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP1-LAN__SFP1-LAN-PRO-vers-SUD": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 3000634,
+          "tx": 11415399570,
+          "rxp": 38406,
+          "txp": 7505334,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 2979713,
+          "tx": 11415397512,
+          "rxp": 38313,
+          "txp": 7505380,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 3000634,
+          "tx": 11415399570,
+          "rxp": 38406,
+          "txp": 7505334,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 11385195441,
+          "tx": 2716586,
+          "rxp": 7504896,
+          "txp": 37922,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 11385195349,
+          "tx": 2716174,
+          "rxp": 7504894,
+          "txp": 37918,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP1-LAN__SFP2-WAN-SUD-vers-PRO": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 8903635048,
+          "tx": 2665586,
+          "rxp": 5852409,
+          "txp": 34438,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 8903238221,
+          "tx": 2763314,
+          "rxp": 5852212,
+          "txp": 34607,
+          "rxd": 4042,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 8903635048,
+          "tx": 2665586,
+          "rxp": 5852409,
+          "txp": 34438,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 2442081,
+          "tx": 8889952053,
+          "rxp": 34142,
+          "txp": 5858523,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 2442205,
+          "tx": 8889952053,
+          "rxp": 34143,
+          "txp": 5858523,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP1-LAN__SFP2-WAN-PRO-vers-SUD": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 3798328,
+          "tx": 11368046187,
+          "rxp": 47553,
+          "txp": 7471948,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 3646464,
+          "tx": 11367933510,
+          "rxp": 47220,
+          "txp": 7471744,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 3798328,
+          "tx": 11368046187,
+          "rxp": 47553,
+          "txp": 7471948,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 11337865538,
+          "tx": 3348970,
+          "rxp": 7471309,
+          "txp": 46825,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 11337865608,
+          "tx": 3348970,
+          "rxp": 7471310,
+          "txp": 46825,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP2-WAN__SFP1-LAN-SUD-vers-PRO": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 11597310319,
+          "tx": 4316434,
+          "rxp": 7640841,
+          "txp": 58985,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 547,
+          "tx": 18109,
+          "rxp": 6,
+          "txp": 129,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 11597310319,
+          "tx": 4316272,
+          "rxp": 7640840,
+          "txp": 58984,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 4158564,
+          "tx": 11597185495,
+          "rxp": 58588,
+          "txp": 7640447,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 4158678,
+          "tx": 11597185679,
+          "rxp": 58588,
+          "txp": 7640448,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP2-WAN__SFP1-LAN-PRO-vers-SUD": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 3133282,
+          "tx": 10725240551,
+          "rxp": 41870,
+          "txp": 7069497,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 0,
+          "tx": 13672,
+          "rxp": 0,
+          "txp": 64,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 3133542,
+          "tx": 10725240843,
+          "rxp": 41874,
+          "txp": 7069501,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 10725050653,
+          "tx": 2971247,
+          "rxp": 7069060,
+          "txp": 41391,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 10725050583,
+          "tx": 2971247,
+          "rxp": 7069059,
+          "txp": 41391,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP2-WAN__SFP2-WAN-SUD-vers-PRO": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 11943535193,
+          "tx": 3784464,
+          "rxp": 7871754,
+          "txp": 50877,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 0,
+          "tx": 13614,
+          "rxp": 0,
+          "txp": 66,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 11943535193,
+          "tx": 3784464,
+          "rxp": 7871754,
+          "txp": 50877,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 3572199,
+          "tx": 11943305978,
+          "rxp": 50284,
+          "txp": 7871138,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 3572199,
+          "tx": 11943305978,
+          "rxp": 50284,
+          "txp": 7871138,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    },
+    "SFP2-WAN__SFP2-WAN-PRO-vers-SUD": {
+      "pro": {
+        "mxl_lan5": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth1": {
+          "rx": 3630244,
+          "tx": 11262191759,
+          "rxp": 49642,
+          "txp": 7422722,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "eth2": {
+          "rx": 172,
+          "tx": 12908,
+          "rxp": 2,
+          "txp": 62,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 3629987,
+          "tx": 11262191639,
+          "rxp": 49639,
+          "txp": 7422720,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      },
+      "sud": {
+        "sfp-lan": {
+          "rx": 0,
+          "tx": 0,
+          "rxp": 0,
+          "txp": 0,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "sfp-wan": {
+          "rx": 11262028101,
+          "tx": 3514349,
+          "rxp": 7422357,
+          "txp": 49241,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        },
+        "bond-trunk": {
+          "rx": 11262028101,
+          "tx": 3514349,
+          "rxp": 7422357,
+          "txp": 49241,
+          "rxd": 0,
+          "txd": 0,
+          "rxe": 0,
+          "txe": 0
+        }
+      }
+    }
+  }
+}
